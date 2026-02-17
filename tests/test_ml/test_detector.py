@@ -1440,3 +1440,75 @@ class TestDetectEventAudioIntegration:
             det.detect_event(mock_zm, 123)
 
         mock_extract.assert_not_called()
+
+
+class TestDetectAudio:
+    """Tests for Detector.detect_audio() convenience method."""
+
+    @patch("pyzm.ml.detector.ModelPipeline")
+    def test_detect_audio_sets_context_and_runs(self, mock_pipeline_cls):
+        """detect_audio sets audio context on pipeline and runs with dummy image."""
+        from pyzm.ml.detector import Detector
+
+        pipeline = MagicMock()
+        pipeline._backends = []
+        pipeline.run.return_value = DetectionResult(
+            detections=[Detection(
+                label="Robin", confidence=0.85,
+                bbox=BBox(0, 0, 1, 1),
+                model_name="BirdNET", detection_type="audio",
+            )]
+        )
+        mock_pipeline_cls.return_value = pipeline
+
+        config = DetectorConfig(
+            models=[ModelConfig(name="BirdNET", type=ModelType.AUDIO, framework=ModelFramework.BIRDNET)],
+        )
+        det = Detector(config=config)
+
+        result = det.detect_audio("/tmp/birds.wav", event_week=20, lat=43.0, lon=-79.0)
+
+        pipeline.set_audio_context.assert_called_once_with("/tmp/birds.wav", 20, 43.0, -79.0)
+        pipeline.run.assert_called_once()
+        assert result.frame_id == "audio"
+        assert result.labels == ["Robin"]
+
+    @patch("pyzm.ml.detector.ModelPipeline")
+    def test_detect_audio_defaults(self, mock_pipeline_cls):
+        """detect_audio passes defaults when optional args omitted."""
+        from pyzm.ml.detector import Detector
+
+        pipeline = MagicMock()
+        pipeline._backends = []
+        pipeline.run.return_value = DetectionResult()
+        mock_pipeline_cls.return_value = pipeline
+
+        config = DetectorConfig(
+            models=[ModelConfig(name="BirdNET", type=ModelType.AUDIO, framework=ModelFramework.BIRDNET)],
+        )
+        det = Detector(config=config)
+
+        det.detect_audio("/tmp/birds.wav")
+
+        pipeline.set_audio_context.assert_called_once_with("/tmp/birds.wav", -1, -1.0, -1.0)
+
+    @patch("pyzm.ml.detector.ModelPipeline")
+    def test_detect_audio_empty_when_no_species(self, mock_pipeline_cls):
+        """detect_audio returns empty result when no species detected."""
+        from pyzm.ml.detector import Detector
+
+        pipeline = MagicMock()
+        pipeline._backends = []
+        pipeline.run.return_value = DetectionResult()
+        mock_pipeline_cls.return_value = pipeline
+
+        config = DetectorConfig(
+            models=[ModelConfig(name="BirdNET", type=ModelType.AUDIO, framework=ModelFramework.BIRDNET)],
+        )
+        det = Detector(config=config)
+
+        result = det.detect_audio("/tmp/silence.wav")
+
+        assert result.matched is False
+        assert result.labels == []
+        assert result.frame_id == "audio"

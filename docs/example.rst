@@ -13,6 +13,10 @@ Detecting a local image
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 .. literalinclude:: ../examples/image.py
 
+Audio detection (BirdNET)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. literalinclude:: ../examples/audio.py
+
 Remote detection via pyzm.serve
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .. literalinclude:: ../examples/remote.py

@@ -119,7 +119,47 @@ if result.matched:
 
 
 # ============================================================================
-# 4. LOAD FROM YAML CONFIG (ml_sequence dict)
+# 4. AUDIO DETECTION (BirdNET)
+# ============================================================================
+# Requires: /opt/zoneminder/venv/bin/pip install birdnet-analyzer
+
+from pyzm import Detector
+
+# Audio-only config -- only audio models in the sequence
+audio_opts = {
+    "general": {"model_sequence": "audio"},
+    "audio": {
+        "general": {"pattern": ".*", "same_model_sequence_strategy": "first"},
+        "sequence": [
+            {
+                "name": "BirdNET",
+                "enabled": "yes",
+                "audio_framework": "birdnet",
+                "birdnet_min_conf": 0.5,
+                "birdnet_lat": -1,       # -1 = no location filtering
+                "birdnet_lon": -1,
+                "birdnet_sensitivity": 1.0,
+                "birdnet_overlap": 0.0,
+            },
+        ],
+    },
+}
+
+detector = Detector.from_dict(audio_opts)
+
+# detect_audio() works on any format ffmpeg can read (WAV, MP3, MP4, etc.)
+result = detector.detect_audio("/tmp/recording.wav")
+
+if result.matched:
+    print(f"Birds: {result.summary}")
+    for det in result.detections:
+        print(f"  {det.label}: {det.confidence:.0%}")
+else:
+    print("No bird species detected")
+
+
+# ============================================================================
+# 5. LOAD FROM YAML CONFIG (ml_sequence dict)
 # ============================================================================
 
 # If you already have an ml_sequence dict from your YAML config:
@@ -163,7 +203,7 @@ result = detector.detect("/tmp/image.jpg")
 
 
 # ============================================================================
-# 5. LOGGING
+# 6. LOGGING
 # ============================================================================
 
 from pyzm.log import setup_zm_logging

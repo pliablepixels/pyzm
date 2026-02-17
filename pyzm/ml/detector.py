@@ -427,6 +427,44 @@ class Detector:
 
         raise TypeError(f"Unsupported input type: {type(input)}")
 
+    def detect_audio(
+        self,
+        audio_path: str,
+        event_week: int = -1,
+        lat: float = -1.0,
+        lon: float = -1.0,
+    ) -> DetectionResult:
+        """Run audio detection on a standalone audio file.
+
+        This is a convenience method for running audio backends (e.g.
+        BirdNET) on an audio file without a ZoneMinder event.  Any format
+        that ffmpeg can read (WAV, MP3, MP4, etc.) is supported.
+
+        Parameters
+        ----------
+        audio_path:
+            Path to an audio file.
+        event_week:
+            ISO week number (1–48) for seasonal filtering.  -1 disables.
+        lat, lon:
+            Latitude/longitude for location-based species filtering.
+            -1 disables.
+
+        Returns
+        -------
+        DetectionResult
+        """
+        import numpy as np  # lazy
+
+        pipeline = self._ensure_pipeline()
+        pipeline.set_audio_context(audio_path, event_week, lat, lon)
+
+        # Audio backends ignore the image; pass a 1x1 dummy.
+        dummy = np.zeros((1, 1, 3), dtype=np.uint8)
+        result = pipeline.run(dummy)
+        result.frame_id = "audio"
+        return result
+
     def detect_event(
         self,
         zm_client: object,
