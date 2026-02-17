@@ -537,3 +537,178 @@ class TestPerTypeConfig:
         assert "person" not in labels
         # "Alice" should be kept (face type has past-detection disabled)
         assert "Alice" in labels
+
+
+# ===================================================================
+# TestAudioContext
+# ===================================================================
+
+class TestAudioContext:
+    """Tests for audio context and audio model dispatch in the pipeline."""
+
+    def test_set_audio_context(self):
+        """set_audio_context stores audio metadata on the pipeline."""
+        from pyzm.ml.pipeline import ModelPipeline
+
+        config = DetectorConfig()
+        pipeline = ModelPipeline(config)
+
+        assert pipeline._audio_path is None
+        assert pipeline._audio_week == -1
+
+        pipeline.set_audio_context("/tmp/audio.wav", event_week=20, monitor_lat=43.0, monitor_lon=-79.0)
+
+        assert pipeline._audio_path == "/tmp/audio.wav"
+        assert pipeline._audio_week == 20
+        assert pipeline._monitor_lat == 43.0
+        assert pipeline._monitor_lon == -79.0
+
+    def test_audio_context_defaults(self):
+        """Pipeline starts with no audio context."""
+        from pyzm.ml.pipeline import ModelPipeline
+
+        config = DetectorConfig()
+        pipeline = ModelPipeline(config)
+
+        assert pipeline._audio_path is None
+        assert pipeline._audio_week == -1
+        assert pipeline._monitor_lat == -1.0
+        assert pipeline._monitor_lon == -1.0
+
+    @patch("pyzm.ml.pipeline._create_backend")
+    @patch("pyzm.ml.pipeline.filter_by_zone")
+    def test_audio_backend_calls_detect_audio(self, mock_zone_filter, mock_create):
+        """Audio model type dispatches to detect_audio instead of detect."""
+        from pyzm.ml.pipeline import ModelPipeline
+
+        audio_dets = [Detection(
+            label="American Robin", confidence=0.9,
+            bbox=BBox(x1=0, y1=0, x2=1, y2=1),
+            model_name="BirdNET", detection_type="audio",
+        )]
+
+        mc = ModelConfig(
+            name="BirdNET", type=ModelType.AUDIO,
+            framework=ModelFramework.BIRDNET,
+        )
+        mock_backend = _make_mock_backend("BirdNET", [])
+        mock_backend.detect_audio = MagicMock(return_value=audio_dets)
+        mock_create.return_value = mock_backend
+        mock_zone_filter.side_effect = lambda dets, zones, shape: (dets, [])
+
+        config = DetectorConfig(models=[mc], match_strategy=MatchStrategy.FIRST)
+        pipeline = ModelPipeline(config)
+        pipeline.set_audio_context("/tmp/audio.wav", event_week=20, monitor_lat=43.0, monitor_lon=-79.0)
+
+        mock_image = MagicMock()
+        mock_image.shape = (100, 100, 3)
+
+        result = pipeline.run(mock_image)
+
+        # detect(image) should NOT have been called
+        mock_backend.detect.assert_not_called()
+        # detect_audio should have been called with audio context
+        mock_backend.detect_audio.assert_called_once_with(
+            "/tmp/audio.wav", 20, 43.0, -79.0,
+        )
+        assert len(result.detections) == 1
+        assert result.detections[0].label == "American Robin"
+        assert result.detections[0].detection_type == "audio"
+
+    @patch("pyzm.ml.pipeline._create_backend")
+    @patch("pyzm.ml.pipeline.filter_by_zone")
+    def test_audio_backend_skipped_when_no_audio_path(self, mock_zone_filter, mock_create):
+        """Audio model is skipped when no audio context is set."""
+        from pyzm.ml.pipeline import ModelPipeline
+
+        mc = ModelConfig(
+            name="BirdNET", type=ModelType.AUDIO,
+            framework=ModelFramework.BIRDNET,
+        )
+        mock_backend = _make_mock_backend("BirdNET", [])
+        mock_backend.detect_audio = MagicMock()
+        mock_create.return_value = mock_backend
+        mock_zone_filter.side_effect = lambda dets, zones, shape: (dets, [])
+
+        config = DetectorConfig(models=[mc], match_strategy=MatchStrategy.FIRST)
+        pipeline = ModelPipeline(config)
+        # No set_audio_context call — audio_path stays None
+
+        mock_image = MagicMock()
+        mock_image.shape = (100, 100, 3)
+
+        result = pipeline.run(mock_image)
+
+        mock_backend.detect.assert_not_called()
+        mock_backend.detect_audio.assert_not_called()
+        assert result.detections == []
+
+    @patch("pyzm.ml.pipeline._create_backend")
+    @patch("pyzm.ml.pipeline.filter_by_zone")
+    def test_mixed_object_and_audio_models(self, mock_zone_filter, mock_create):
+        """Object and audio models run together, both contribute detections."""
+        from pyzm.ml.pipeline import ModelPipeline
+
+        obj_dets = [_det("person", model="yolo")]
+        audio_dets = [Detection(
+            label="American Robin", confidence=0.85,
+            bbox=BBox(x1=0, y1=0, x2=1, y2=1),
+            model_name="BirdNET", detection_type="audio",
+        )]
+
+        mc_obj = _make_model_config("yolo", mtype=ModelType.OBJECT)
+        mc_audio = ModelConfig(
+            name="BirdNET", type=ModelType.AUDIO,
+            framework=ModelFramework.BIRDNET,
+        )
+
+        backend_obj = _make_mock_backend("yolo", obj_dets)
+        backend_audio = _make_mock_backend("BirdNET", [])
+        backend_audio.detect_audio = MagicMock(return_value=audio_dets)
+
+        mock_create.side_effect = [backend_obj, backend_audio]
+        mock_zone_filter.side_effect = lambda dets, zones, shape: (dets, [])
+
+        config = DetectorConfig(
+            models=[mc_obj, mc_audio],
+            match_strategy=MatchStrategy.FIRST,
+        )
+        pipeline = ModelPipeline(config)
+        pipeline.set_audio_context("/tmp/audio.wav", event_week=20)
+
+        mock_image = MagicMock()
+        mock_image.shape = (100, 100, 3)
+
+        result = pipeline.run(mock_image)
+
+        labels = {d.label for d in result.detections}
+        assert "person" in labels
+        assert "American Robin" in labels
+        backend_obj.detect.assert_called_once()
+        backend_audio.detect_audio.assert_called_once()
+
+    @patch("pyzm.ml.pipeline._create_backend")
+    @patch("pyzm.ml.pipeline.filter_by_zone")
+    def test_audio_backend_exception_handled_gracefully(self, mock_zone_filter, mock_create):
+        """Exception in detect_audio is caught and logged, not propagated."""
+        from pyzm.ml.pipeline import ModelPipeline
+
+        mc = ModelConfig(
+            name="BirdNET", type=ModelType.AUDIO,
+            framework=ModelFramework.BIRDNET,
+        )
+        mock_backend = _make_mock_backend("BirdNET", [])
+        mock_backend.detect_audio = MagicMock(side_effect=RuntimeError("BirdNET crashed"))
+        mock_create.return_value = mock_backend
+        mock_zone_filter.side_effect = lambda dets, zones, shape: (dets, [])
+
+        config = DetectorConfig(models=[mc], match_strategy=MatchStrategy.FIRST)
+        pipeline = ModelPipeline(config)
+        pipeline.set_audio_context("/tmp/audio.wav")
+
+        mock_image = MagicMock()
+        mock_image.shape = (100, 100, 3)
+
+        # Should NOT raise
+        result = pipeline.run(mock_image)
+        assert result.detections == []

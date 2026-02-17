@@ -442,6 +442,145 @@ class TestDetectorConfig:
         dc = DetectorConfig()
         assert dc.type_overrides == {}
 
+    def test_from_dict_audio_birdnet_sequence(self):
+        """from_dict correctly parses audio type with BirdNET config."""
+        ml_options = {
+            "general": {
+                "model_sequence": "object,audio",
+                "same_model_sequence_strategy": "first",
+            },
+            "object": {
+                "general": {"pattern": "(person|car)"},
+                "sequence": [
+                    {"name": "YOLO", "object_framework": "opencv"},
+                ],
+            },
+            "audio": {
+                "general": {
+                    "pattern": ".*",
+                    "same_model_sequence_strategy": "first",
+                },
+                "sequence": [
+                    {
+                        "name": "BirdNET",
+                        "enabled": "yes",
+                        "audio_framework": "birdnet",
+                        "birdnet_min_conf": "0.5",
+                        "birdnet_lat": "43.65",
+                        "birdnet_lon": "-79.38",
+                        "birdnet_sensitivity": "1.5",
+                        "birdnet_overlap": "0.5",
+                    },
+                ],
+            },
+        }
+        dc = DetectorConfig.from_dict(ml_options)
+
+        assert len(dc.models) == 2
+        obj_model = dc.models[0]
+        audio_model = dc.models[1]
+
+        assert obj_model.type == ModelType.OBJECT
+        assert audio_model.type == ModelType.AUDIO
+        assert audio_model.name == "BirdNET"
+        assert audio_model.framework == ModelFramework.BIRDNET
+        assert audio_model.birdnet_min_conf == 0.5
+        assert audio_model.birdnet_lat == 43.65
+        assert audio_model.birdnet_lon == -79.38
+        assert audio_model.birdnet_sensitivity == 1.5
+        assert audio_model.birdnet_overlap == 0.5
+
+    def test_from_dict_audio_defaults_framework_to_birdnet(self):
+        """Audio type defaults to birdnet framework when not specified."""
+        ml_options = {
+            "general": {"model_sequence": "audio"},
+            "audio": {
+                "general": {},
+                "sequence": [
+                    {"name": "default-audio"},
+                ],
+            },
+        }
+        dc = DetectorConfig.from_dict(ml_options)
+        assert dc.models[0].framework == ModelFramework.BIRDNET
+
+    def test_from_dict_audio_birdnet_defaults(self):
+        """BirdNET config fields have correct defaults when not specified in YAML."""
+        ml_options = {
+            "general": {"model_sequence": "audio"},
+            "audio": {
+                "general": {},
+                "sequence": [{"name": "BirdNET"}],
+            },
+        }
+        dc = DetectorConfig.from_dict(ml_options)
+        mc = dc.models[0]
+        assert mc.birdnet_lat == -1.0
+        assert mc.birdnet_lon == -1.0
+        assert mc.birdnet_min_conf == 0.25
+        assert mc.birdnet_sensitivity == 1.0
+        assert mc.birdnet_overlap == 0.0
+
+    def test_from_dict_audio_birdnet_min_confidence_alias(self):
+        """birdnet_min_confidence works as alias for birdnet_min_conf."""
+        ml_options = {
+            "general": {"model_sequence": "audio"},
+            "audio": {
+                "general": {},
+                "sequence": [
+                    {
+                        "name": "BirdNET",
+                        "birdnet_min_confidence": "0.7",
+                    },
+                ],
+            },
+        }
+        dc = DetectorConfig.from_dict(ml_options)
+        assert dc.models[0].birdnet_min_conf == 0.7
+
+
+# ===================================================================
+# TestModelConfigBirdnet
+# ===================================================================
+
+class TestModelConfigBirdnet:
+    """Tests for BirdNET-specific ModelConfig fields."""
+
+    def test_birdnet_field_defaults(self):
+        mc = ModelConfig()
+        assert mc.birdnet_lat == -1.0
+        assert mc.birdnet_lon == -1.0
+        assert mc.birdnet_min_conf == 0.25
+        assert mc.birdnet_sensitivity == 1.0
+        assert mc.birdnet_overlap == 0.0
+
+    def test_birdnet_fields_set(self):
+        mc = ModelConfig(
+            type=ModelType.AUDIO,
+            framework=ModelFramework.BIRDNET,
+            birdnet_lat=51.5,
+            birdnet_lon=-0.1,
+            birdnet_min_conf=0.7,
+            birdnet_sensitivity=1.5,
+            birdnet_overlap=0.5,
+        )
+        assert mc.type == ModelType.AUDIO
+        assert mc.framework == ModelFramework.BIRDNET
+        assert mc.birdnet_lat == 51.5
+        assert mc.birdnet_lon == -0.1
+        assert mc.birdnet_min_conf == 0.7
+        assert mc.birdnet_sensitivity == 1.5
+        assert mc.birdnet_overlap == 0.5
+
+    def test_audio_enum_values(self):
+        assert ModelType.AUDIO.value == "audio"
+        assert ModelFramework.BIRDNET.value == "birdnet"
+
+    def test_audio_enum_from_string(self):
+        mc = ModelConfig(type="audio", framework="birdnet")
+        assert mc.type == ModelType.AUDIO
+        assert mc.framework == ModelFramework.BIRDNET
+
 
 # ===================================================================
 # TestStreamConfig

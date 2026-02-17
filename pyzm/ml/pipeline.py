@@ -65,6 +65,10 @@ def _create_backend(model_config: ModelConfig) -> MLBackend:
         from pyzm.ml.backends.rekognition import RekognitionBackend
         return RekognitionBackend(model_config)
 
+    if fw == ModelFramework.BIRDNET:
+        from pyzm.ml.backends.birdnet import BirdnetBackend
+        return BirdnetBackend(model_config)
+
     raise ValueError(f"Unknown model framework: {fw}")
 
 
@@ -88,6 +92,25 @@ class ModelPipeline:
         self._config = detector_config
         self._backends: list[tuple[ModelConfig, MLBackend]] = []
         self._loaded = False
+
+        # Audio context (set before run() when audio models are in the sequence)
+        self._audio_path: str | None = None
+        self._audio_week: int = -1
+        self._monitor_lat: float = -1.0
+        self._monitor_lon: float = -1.0
+
+    def set_audio_context(
+        self,
+        audio_path: str | None,
+        event_week: int = -1,
+        monitor_lat: float = -1.0,
+        monitor_lon: float = -1.0,
+    ) -> None:
+        """Set audio file context for BirdNET / audio backends."""
+        self._audio_path = audio_path
+        self._audio_week = event_week
+        self._monitor_lat = monitor_lat
+        self._monitor_lon = monitor_lon
 
     # -- public API -----------------------------------------------------------
 
@@ -323,7 +346,16 @@ class ModelPipeline:
                     continue
 
             try:
-                raw = backend.detect(image)
+                if mc.type == ModelType.AUDIO:
+                    if not self._audio_path:
+                        logger.debug("Skipping %s: no audio available", backend.name)
+                        continue
+                    raw = backend.detect_audio(
+                        self._audio_path, self._audio_week,
+                        self._monitor_lat, self._monitor_lon,
+                    )
+                else:
+                    raw = backend.detect(image)
                 if raw:
                     det_summary = ", ".join(
                         f"{d.label}:{d.confidence:.0%}" for d in raw

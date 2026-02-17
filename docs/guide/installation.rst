@@ -156,12 +156,18 @@ Optional dependencies
 Some ML backends have additional requirements that are **not** installed
 automatically:
 
+- **BirdNET audio recognition** -- ``birdnet-analyzer`` for identifying bird species from audio in ZM events
 - (DEPRECATED) **Coral EdgeTPU** -- ``pycoral`` and the Edge TPU runtime
 - **Face recognition (dlib)** -- ``dlib``, ``face_recognition``
 - **ALPR** -- a running OpenALPR or Plate Recognizer service
 - **AWS Rekognition** -- ``boto3`` with configured AWS credentials
 
-Install these manually as needed for your detection pipeline.
+Install these into the venv as needed for your detection pipeline:
+
+.. code-block:: bash
+
+   /opt/zoneminder/venv/bin/pip install birdnet-analyzer  # BirdNET audio
+   /opt/zoneminder/venv/bin/pip install face_recognition   # dlib face recognition
 
 .. note::
 

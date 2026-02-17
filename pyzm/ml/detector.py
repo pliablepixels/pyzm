@@ -501,7 +501,28 @@ class Detector:
             return self._detect_multi_frame_remote(frames, zones, original_shape=original_shape)
 
         pipeline = self._ensure_pipeline()
-        return self._detect_multi_frame(frames, zones, pipeline, original_shape=original_shape)
+
+        # Extract audio if any enabled model needs it
+        wav_path = None
+        has_audio_model = any(
+            mc.type == ModelType.AUDIO and mc.enabled
+            for mc in self._config.models
+        )
+        if has_audio_model:
+            wav_path, week, mon_lat, mon_lon = self._extract_event_audio(
+                zm_client, event_id,
+            )
+            pipeline.set_audio_context(wav_path, week, mon_lat, mon_lon)
+
+        try:
+            return self._detect_multi_frame(frames, zones, pipeline, original_shape=original_shape)
+        finally:
+            if wav_path:
+                import os
+                try:
+                    os.unlink(wav_path)
+                except OSError:
+                    pass
 
     # -- class methods --------------------------------------------------------
 
@@ -545,6 +566,130 @@ class Detector:
             gateway_password=general.get("ml_password"),
             gateway_timeout=int(general.get("ml_timeout", 60)),
         )
+
+    # -- audio extraction -----------------------------------------------------
+
+    @staticmethod
+    def _extract_event_audio(
+        zm_client: object,
+        event_id: int,
+    ) -> tuple[str | None, int, float, float]:
+        """Extract audio from an event's video file for BirdNET analysis.
+
+        Returns ``(wav_path, week, monitor_lat, monitor_lon)`` or
+        ``(None, -1, -1.0, -1.0)`` on failure.
+        """
+        import os
+        import subprocess
+        import tempfile
+        from datetime import datetime
+
+        # Query DB for event video file and monitor location
+        try:
+            from pyzm.zm.db import get_zm_db
+        except ImportError:
+            logger.debug("pyzm.zm.db not available, skipping audio extraction")
+            return None, -1, -1.0, -1.0
+
+        conn = get_zm_db()
+        if conn is None:
+            logger.debug("Could not connect to ZM database, skipping audio extraction")
+            return None, -1, -1.0, -1.0
+
+        try:
+            cur = conn.cursor(dictionary=True)
+            cur.execute(
+                "SELECT E.DefaultVideo, E.StartDateTime, "
+                "M.Latitude, M.Longitude "
+                "FROM Events E JOIN Monitors M ON E.MonitorId = M.Id "
+                "WHERE E.Id = %s",
+                (event_id,),
+            )
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+        except Exception:
+            logger.debug("Failed to query event %d for audio extraction", event_id, exc_info=True)
+            return None, -1, -1.0, -1.0
+
+        if not row or not row.get("DefaultVideo"):
+            logger.debug("Event %d has no DefaultVideo", event_id)
+            return None, -1, -1.0, -1.0
+
+        # Build the video file path via zm_client.event_path()
+        try:
+            video_dir = zm_client.event_path(event_id)
+        except Exception:
+            logger.debug("Failed to get event path for %d", event_id, exc_info=True)
+            return None, -1, -1.0, -1.0
+
+        video_path = os.path.join(video_dir, row["DefaultVideo"])
+        if not os.path.isfile(video_path):
+            logger.debug("Video file not found: %s", video_path)
+            return None, -1, -1.0, -1.0
+
+        # Probe for audio stream
+        try:
+            probe = subprocess.run(
+                [
+                    "ffprobe", "-v", "error",
+                    "-select_streams", "a",
+                    "-show_entries", "stream=codec_type",
+                    "-of", "csv=p=0",
+                    video_path,
+                ],
+                capture_output=True, text=True, timeout=10,
+            )
+            if "audio" not in probe.stdout:
+                logger.debug("No audio stream in %s", video_path)
+                return None, -1, -1.0, -1.0
+        except Exception:
+            logger.debug("ffprobe failed for %s", video_path, exc_info=True)
+            return None, -1, -1.0, -1.0
+
+        # Extract audio to temp WAV (48 kHz mono, PCM s16le)
+        wav_fd, wav_path = tempfile.mkstemp(suffix=".wav", prefix="zm_birdnet_")
+        os.close(wav_fd)
+
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg", "-y", "-v", "error",
+                    "-i", video_path,
+                    "-vn", "-acodec", "pcm_s16le",
+                    "-ar", "48000", "-ac", "1",
+                    wav_path,
+                ],
+                capture_output=True, timeout=60, check=True,
+            )
+        except Exception:
+            logger.debug("ffmpeg audio extraction failed for %s", video_path, exc_info=True)
+            try:
+                os.unlink(wav_path)
+            except OSError:
+                pass
+            return None, -1, -1.0, -1.0
+
+        # Compute week number (1-48, clamped for BirdNET)
+        week = -1
+        start_dt = row.get("StartDateTime")
+        if start_dt:
+            if isinstance(start_dt, str):
+                try:
+                    start_dt = datetime.fromisoformat(start_dt)
+                except ValueError:
+                    start_dt = None
+            if start_dt is not None:
+                week = min((start_dt.timetuple().tm_yday // 7) + 1, 48)
+
+        monitor_lat = float(row.get("Latitude") or -1.0)
+        monitor_lon = float(row.get("Longitude") or -1.0)
+
+        logger.debug(
+            "Extracted audio for event %d: %s (week=%d, lat=%.2f, lon=%.2f)",
+            event_id, wav_path, week, monitor_lat, monitor_lon,
+        )
+        return wav_path, week, monitor_lat, monitor_lon
 
     # -- multi-frame logic ----------------------------------------------------
 

@@ -24,6 +24,7 @@ class ModelType(str, Enum):
     OBJECT = "object"
     FACE = "face"
     ALPR = "alpr"
+    AUDIO = "audio"
 
 
 class ModelFramework(str, Enum):
@@ -37,6 +38,7 @@ class ModelFramework(str, Enum):
     REKOGNITION = "aws_rekognition"
     VIRELAI = "virelai"
     HOG = "hog"
+    BIRDNET = "birdnet"
 
 
 class Processor(str, Enum):
@@ -130,6 +132,13 @@ class ModelConfig(BaseModel):
     alpr_url: str | None = None
     platerec_min_dscore: float = 0.1
     platerec_min_score: float = 0.2
+
+    # BirdNET audio recognition
+    birdnet_lat: float = -1.0
+    birdnet_lon: float = -1.0
+    birdnet_min_conf: float = 0.25
+    birdnet_sensitivity: float = 1.0
+    birdnet_overlap: float = 0.0
 
     # AWS Rekognition
     aws_region: str = "us-east-1"
@@ -304,13 +313,15 @@ def _seq_item_to_model_config(
         ModelType.OBJECT: "object",
         ModelType.FACE: "face",
         ModelType.ALPR: "alpr",
+        ModelType.AUDIO: "audio",
     }
     prefix = prefix_map[mtype]
 
     framework_key = f"{prefix}_framework"
     if prefix == "face":
         framework_key = "face_detection_framework"
-    fw_raw = seq.get(framework_key, "opencv")
+    default_fw = "birdnet" if mtype == ModelType.AUDIO else "opencv"
+    fw_raw = seq.get(framework_key, default_fw)
     try:
         fw = ModelFramework(fw_raw)
     except ValueError:
@@ -357,6 +368,11 @@ def _seq_item_to_model_config(
         alpr_url=seq.get("alpr_url"),
         platerec_min_dscore=float(seq.get("platerec_min_dscore", 0.1)),
         platerec_min_score=float(seq.get("platerec_min_score", 0.2)),
+        birdnet_lat=float(seq.get("birdnet_lat", -1.0)),
+        birdnet_lon=float(seq.get("birdnet_lon", -1.0)),
+        birdnet_min_conf=float(seq.get("birdnet_min_conf", seq.get("birdnet_min_confidence", 0.25))),
+        birdnet_sensitivity=float(seq.get("birdnet_sensitivity", 1.0)),
+        birdnet_overlap=float(seq.get("birdnet_overlap", 0.0)),
         aws_region=seq.get("aws_region", "us-east-1"),
         aws_access_key_id=seq.get("aws_access_key_id"),
         aws_secret_access_key=seq.get("aws_secret_access_key"),
