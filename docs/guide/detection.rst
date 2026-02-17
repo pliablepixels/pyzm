@@ -19,6 +19,7 @@ Architecture overview
      |     +-- FaceDlibBackend    (dlib / face_recognition)
      |     +-- AlprBackend        (PlateRecognizer / OpenALPR)
      |     +-- RekognitionBackend (AWS Rekognition)
+     |     +-- BirdnetBackend     (audio bird species ID)
      |     |
      |     +-- filters (zone, size, pattern, past-detection)
      |
@@ -145,7 +146,7 @@ The ``ml_sequence`` dict format
 
    ml_sequence:
      general:
-       model_sequence: "object,face,alpr"
+       model_sequence: "object,face,alpr,audio"
 
      object:
        general:
@@ -174,6 +175,20 @@ The ``ml_sequence`` dict format
        sequence:
          - alpr_service: plate_recognizer
            alpr_key: YOUR_KEY
+
+     audio:
+       general:
+         pattern: ".*"
+         same_model_sequence_strategy: first
+       sequence:
+         - name: BirdNET
+           enabled: "yes"
+           audio_framework: birdnet
+           birdnet_min_conf: 0.5
+           birdnet_lat: -1
+           birdnet_lon: -1
+           birdnet_sensitivity: 1.0
+           birdnet_overlap: 0.0
 
 In Python:
 
@@ -216,6 +231,9 @@ All backends implement the ``MLBackend`` interface (``load()``,
    * - RekognitionBackend
      - ``aws_rekognition``
      - AWS Rekognition API
+   * - BirdnetBackend
+     - ``birdnet``
+     - Audio bird species identification (6500+ species) via ``birdnet-analyzer``
 
 
 Match and frame strategies
