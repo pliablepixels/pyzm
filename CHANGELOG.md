@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 
 
+## [2.1.1] - 2026-02-18
+
+### Documentation
+
+- fix remote.py docstring to show URL mode as default ([312e667](https://github.com/pliablepixels/pyzm/commit/312e667726d8a81636e8af036b0bf2d289a6b758))
+- add RTD links to all examples ([3e7e455](https://github.com/pliablepixels/pyzm/commit/3e7e455d2edf1f812d1c4e0e5137f2052a6a037d))
+- simplify examples, add URL mode to remote.py ([3110ec1](https://github.com/pliablepixels/pyzm/commit/3110ec17de45bbb5d939f39b782200ff657d4208))
+
+### Features
+
+- accept /login when auth disabled, add --debug flag ([cff3151](https://github.com/pliablepixels/pyzm/commit/cff3151133cefb3e11ec7dc5feeeed9b90474bf7))
+- change default gateway_mode from "image" to "url" ([8d2b675](https://github.com/pliablepixels/pyzm/commit/8d2b67591b1faf7e0cd4da88ac9cedf010c713e0))
+
+### Miscellaneous
+
+- bump version to v2.1.1 ([05fac76](https://github.com/pliablepixels/pyzm/commit/05fac761af125ee858bacc394a7b4d1c12017b53))
+
 ## [2.1.0] - 2026-02-18
 
 ### Bug Fixes
@@ -21,6 +38,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- update CHANGELOG for v2.1.0 ([1e755fd](https://github.com/pliablepixels/pyzm/commit/1e755fd1e2963855d45c9992a689920f4a3ce097))
 - document all new ZMClient API methods in quickstart ([78e2b7e](https://github.com/pliablepixels/pyzm/commit/78e2b7e617475dead1f52e1801058b50dff65542))
 - add standalone logging guide, fix stale url= references ([82450d9](https://github.com/pliablepixels/pyzm/commit/82450d97a4f5c3f1343f080fa3742b2bed492eb6))
 - add BirdNET to detection guide and feature list ([7186b58](https://github.com/pliablepixels/pyzm/commit/7186b5831669988291e1905264c7615320666208))
