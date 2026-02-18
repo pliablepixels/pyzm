@@ -125,7 +125,7 @@ class DetectionResult:
     def annotate(self, **draw_kwargs: object) -> "np.ndarray":
         """Draw bounding boxes on ``self.image`` and return the annotated copy.
 
-        Extra *draw_kwargs* are forwarded to :func:`pyzm.helpers.utils.draw_bbox`.
+        Extra *draw_kwargs* are forwarded to the internal bbox drawing function.
         If OpenCV is not available this raises ``ImportError``.
         """
         import cv2  # noqa: F811

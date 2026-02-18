@@ -2,17 +2,17 @@
 # Author: Michael Ludvig
 
 import io
+import logging
 import sys
 import base64
 
 import boto3
 import cv2
 
-from pyzm.helpers.Base import Base
-import pyzm.helpers.globals as g
+logger = logging.getLogger("pyzm")
 
 
-class AwsRekognition(Base):
+class AwsRekognition:
     def __init__(self, options={}):
         self.options = options
         self.min_confidence = self.options.get('object_min_confidence', 0.7)
@@ -30,18 +30,18 @@ class AwsRekognition(Base):
             del boto3_kwargs['aws_region']
 
         self._rekognition = boto3.client('rekognition', **boto3_kwargs)
-        g.logger.Debug (2, 'AWS Rekognition initialised (min confidence: {}%'.format(self.min_confidence))
+        logger.debug('AWS Rekognition initialised (min confidence: {}%'.format(self.min_confidence))
 
     def detect(self, image=None):
         height, width = image.shape[:2]
 
-        g.logger.Debug(1, '|---------- AWS Rekognition (image: {}x{}) ----------|'.format(width,height))
+        logger.debug('|---------- AWS Rekognition (image: {}x{}) ----------|'.format(width,height))
 
         # Convert 'image' to Base64-encoded JPG format
         #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         is_success, _buff = cv2.imencode(".jpg", image)
         if not is_success:
-            g.logger.Warning('Was unable to conver the image to JPG')
+            logger.warning('Was unable to conver the image to JPG')
             return [], [], [], []
         image_jpg = _buff.tobytes()
 
@@ -50,7 +50,7 @@ class AwsRekognition(Base):
             Image={ 'Bytes': image_jpg },
             MinConfidence=self.min_confidence
         )
-        g.logger.Debug(2, 'Detection response: {}'.format(response))
+        logger.debug('Detection response: {}'.format(response))
 
         # Parse the returned labels
         bboxes = []
@@ -71,7 +71,7 @@ class AwsRekognition(Base):
                     round(width * (instance['BoundingBox']['Left'] + instance['BoundingBox']['Width'])),
                     round(height * (instance['BoundingBox']['Top'] + instance['BoundingBox']['Height']))
                 )
-                g.logger.Debug(3, 'bbox={} / label={} / conf={}'.format(bbox, label, conf))
+                logger.debug('bbox={} / label={} / conf={}'.format(bbox, label, conf))
 
                 bboxes.append(bbox)
                 labels.append(label)

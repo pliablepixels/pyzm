@@ -1,11 +1,13 @@
-import numpy as np
-import cv2
-import re
-from pyzm.helpers.Base import Base
-import portalocker
+import logging
 import os
-from pyzm.helpers.utils import Timer
-import pyzm.helpers.globals as g
+import time as _time
+
+import cv2
+import numpy as np
+import portalocker
+import re
+
+logger = logging.getLogger("pyzm")
 
 
 # cv2 version check for unconnected layers fix
@@ -20,7 +22,7 @@ def cv2_version() -> tuple:
     return (maj, minor, patch)
 
 
-class YoloBase(Base):
+class YoloBase:
     """Shared base class for YOLO backends (Darknet and ONNX).
 
     Subclasses must implement:
@@ -45,8 +47,8 @@ class YoloBase(Base):
 
         self.disable_locks = options.get('disable_locks', 'no')
         if self.disable_locks == 'no':
-            g.logger.Debug(2, '{}: portalock: max:{}, name:{}, timeout:{}'.format(self.name, self.lock_maximum, self.lock_name,
-                                                                              self.lock_timeout))
+            logger.debug('{}: portalock: max:{}, name:{}, timeout:{}'.format(self.name, self.lock_maximum, self.lock_name,
+                                                                          self.lock_timeout))
             self.lock = portalocker.BoundedSemaphore(maximum=self.lock_maximum, name=self.lock_name,
                                                      timeout=self.lock_timeout)
 
@@ -57,16 +59,16 @@ class YoloBase(Base):
         if self.disable_locks == 'yes':
             return
         if self.is_locked:
-            g.logger.Debug(2, '{}: {} portalock already acquired'.format(self.name, self.lock_name))
+            logger.debug('{}: {} portalock already acquired'.format(self.name, self.lock_name))
             return
         try:
-            g.logger.Debug(2, '{}: Waiting for {} portalock...'.format(self.name, self.lock_name))
+            logger.debug('{}: Waiting for {} portalock...'.format(self.name, self.lock_name))
             self.lock.acquire()
-            g.logger.Debug(2, '{}: Got {} portalock'.format(self.name, self.lock_name))
+            logger.debug('{}: Got {} portalock'.format(self.name, self.lock_name))
             self.is_locked = True
 
         except portalocker.AlreadyLocked:
-            g.logger.Error('{}: Timeout waiting for {} portalock for {} seconds'.format(self.name, self.lock_name, self.lock_timeout))
+            logger.error('{}: Timeout waiting for {} portalock for {} seconds'.format(self.name, self.lock_name, self.lock_timeout))
             raise ValueError(
                 '{}: Timeout waiting for {} portalock for {} seconds'.format(self.name, self.lock_name, self.lock_timeout))
 
@@ -74,11 +76,11 @@ class YoloBase(Base):
         if self.disable_locks == 'yes':
             return
         if not self.is_locked:
-            g.logger.Debug(2, '{}: {} portalock already released'.format(self.name, self.lock_name))
+            logger.debug('{}: {} portalock already released'.format(self.name, self.lock_name))
             return
         self.lock.release()
         self.is_locked = False
-        g.logger.Debug(2, '{}: Released {} portalock'.format(self.name, self.lock_name))
+        logger.debug('{}: Released {} portalock'.format(self.name, self.lock_name))
 
     def get_options(self):
         return self.options
@@ -96,23 +98,23 @@ class YoloBase(Base):
         """Configure CUDA backend if processor is 'gpu' and OpenCV supports it."""
         if self.processor == 'gpu':
             if cv2_ver < (4, 2, 0):
-                g.logger.Error('{}: Not setting CUDA backend for OpenCV DNN'.format(self.name))
-                g.logger.Error(
+                logger.error('{}: Not setting CUDA backend for OpenCV DNN'.format(self.name))
+                logger.error(
                     '{}: OpenCV version {} does not support CUDA for DNNs. A minimum of 4.2 is required. See https://www.pyimagesearch.com/2020/02/03/how-to-use-opencvs-dnn-module-with-nvidia-gpus-cuda-and-cudnn/ on how to compile and install openCV 4.2'
                     .format(self.name, cv2.__version__))
                 self.processor = 'cpu'
         else:
-            g.logger.Debug(1, '{}: Using CPU for detection'.format(self.name))
+            logger.debug('{}: Using CPU for detection'.format(self.name))
 
         if self.processor == 'gpu':
-            g.logger.Debug(2, '{}: Setting CUDA backend for OpenCV'.format(self.name))
-            g.logger.Debug(3,
-                           '{}: If you did not set your CUDA_ARCH_BIN correctly during OpenCV compilation, you will get errors during detection related to invalid device/make_policy'.format(self.name))
+            logger.debug('{}: Setting CUDA backend for OpenCV'.format(self.name))
+            logger.debug(
+                '{}: If you did not set your CUDA_ARCH_BIN correctly during OpenCV compilation, you will get errors during detection related to invalid device/make_policy'.format(self.name))
             try:
                 self.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
                 self.net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
             except Exception as e:
-                g.logger.Error('{}: Failed to set CUDA backend: {}. Falling back to CPU.'.format(self.name, e))
+                logger.error('{}: Failed to set CUDA backend: {}. Falling back to CPU.'.format(self.name, e))
                 self.processor = 'cpu'
                 self.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
                 self.net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
@@ -132,7 +134,7 @@ class YoloBase(Base):
 
     def detect(self, image=None):
         Height, Width = image.shape[:2]
-        g.logger.Debug(2, '{}: detect extracted image dimensions as: {}wx{}h'.format(self.name, Width, Height))
+        logger.debug('{}: detect extracted image dimensions as: {}wx{}h'.format(self.name, Width, Height))
 
         if self.options.get('auto_lock', True):
             self.acquire_lock()
@@ -141,11 +143,11 @@ class YoloBase(Base):
             if not self.net:
                 self.load_model()
 
-            g.logger.Debug(
-                1, '|---------- {} (input image: {}w*{}h, model resize dimensions: {}w*{}h) ----------|'
+            logger.debug(
+                '|---------- {} (input image: {}w*{}h, model resize dimensions: {}w*{}h) ----------|'
                 .format(self.name, Width, Height, self.model_width, self.model_height))
 
-            t = Timer()
+            _t0 = _time.perf_counter()
             blob = self._create_blob(image)
 
             nms_threshold = 0.4
@@ -159,7 +161,7 @@ class YoloBase(Base):
                 class_ids, confidences, boxes = self._forward_and_parse(blob, Width, Height, conf_threshold)
             except cv2.error as e:
                 if self.processor == 'gpu':
-                    g.logger.Error('{}: GPU inference failed: {}. Falling back to CPU.'.format(self.name, e))
+                    logger.error('{}: GPU inference failed: {}. Falling back to CPU.'.format(self.name, e))
                     self.processor = 'cpu'
                     self.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
                     self.net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
@@ -174,16 +176,16 @@ class YoloBase(Base):
                 self.release_lock()
             raise
 
-        diff_time = t.stop_and_get_ms()
-        g.logger.Debug(
-            1, 'perf: processor:{} {} detection took: {}'.format(self.processor, self.name, diff_time))
+        diff_time = f"{(_time.perf_counter() - _t0) * 1000:.2f} ms"
+        logger.debug(
+            'perf: processor:{} {} detection took: {}'.format(self.processor, self.name, diff_time))
 
-        t = Timer()
+        _t0 = _time.perf_counter()
         indices = cv2.dnn.NMSBoxes(boxes, confidences, conf_threshold,
                                    nms_threshold)
-        diff_time = t.stop_and_get_ms()
-        g.logger.Debug(
-            2, 'perf: processor:{} {} NMS filtering took: {}'.format(self.processor, self.name, diff_time))
+        diff_time = f"{(_time.perf_counter() - _t0) * 1000:.2f} ms"
+        logger.debug(
+            'perf: processor:{} {} NMS filtering took: {}'.format(self.processor, self.name, diff_time))
         # NMSBoxes returns flat indices in OpenCV >= 4.5.4, nested [[i]] before that
         indices = np.array(indices).flatten()
 

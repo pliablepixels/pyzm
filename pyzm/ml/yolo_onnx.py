@@ -1,8 +1,12 @@
+import logging
+import time as _time
+
 import cv2
 import numpy as np
-import pyzm.helpers.globals as g
+
 from pyzm.ml.yolo import YoloBase, cv2_version
-from pyzm.helpers.utils import Timer
+
+logger = logging.getLogger("pyzm")
 
 
 class YoloOnnx(YoloBase):
@@ -34,8 +38,8 @@ class YoloOnnx(YoloBase):
                 out_shape = [d.dim_value for d in out_dims]
                 if len(out_shape) == 3 and out_shape[2] == 6:
                     self.is_native_e2e = True
-                    g.logger.Debug(1, '{}: Native end-to-end model (YOLO26-style) detected, '
-                                   'output shape={}'.format(self.name, out_shape))
+                    logger.debug('{}: Native end-to-end model (YOLO26-style) detected, '
+                                'output shape={}'.format(self.name, out_shape))
 
                 # Always find pre-NMS layer as fallback
                 for i, node in enumerate(model.graph.node):
@@ -47,13 +51,13 @@ class YoloOnnx(YoloBase):
 
                 if self.is_native_e2e:
                     if self.pre_nms_layer:
-                        g.logger.Debug(2, '{}: Pre-NMS fallback layer: {}'.format(
-                            self.name, self.pre_nms_layer))
+                        logger.debug('{}: Pre-NMS fallback layer: {}'.format(
+                        self.name, self.pre_nms_layer))
                 elif self.pre_nms_layer:
-                    g.logger.Debug(1, '{}: End2end ONNX detected, will read pre-NMS layer: {}'.format(
+                    logger.debug('{}: End2end ONNX detected, will read pre-NMS layer: {}'.format(
                         self.name, self.pre_nms_layer))
                 else:
-                    g.logger.Error('{}: End2end ONNX detected but could not find pre-NMS layer'.format(self.name))
+                    logger.error('{}: End2end ONNX detected but could not find pre-NMS layer'.format(self.name))
                     self.is_end2end = False
 
             if 'names' in meta:
@@ -64,7 +68,7 @@ class YoloOnnx(YoloBase):
                     classes[int(k)] = v
                 return classes
         except Exception as e:
-            g.logger.Debug(1, '{}: Failed to load ONNX metadata: {}'.format(self.name, e))
+            logger.debug('{}: Failed to load ONNX metadata: {}'.format(self.name, e))
         return None
 
     def populate_class_labels(self):
@@ -74,7 +78,7 @@ class YoloOnnx(YoloBase):
         onnx_classes = self._load_onnx_metadata()
         if not class_file_abs_path:
             if onnx_classes:
-                g.logger.Debug(1, '{}: Loaded {} class labels from ONNX metadata'.format(self.name, len(onnx_classes)))
+                logger.debug('{}: Loaded {} class labels from ONNX metadata'.format(self.name, len(onnx_classes)))
                 self.classes = onnx_classes
                 return
             raise ValueError('{}: No object_labels provided and ONNX metadata extraction failed'.format(self.name))
@@ -83,19 +87,19 @@ class YoloOnnx(YoloBase):
         f.close()
 
     def load_model(self):
-        g.logger.Debug(1, '|--------- Loading "{}" model from disk -------------|'.format(self.name))
-        t = Timer()
+        logger.debug('|--------- Loading "{}" model from disk -------------|'.format(self.name))
+        _t0 = _time.perf_counter()
         weights = self.options.get('object_weights')
         cv2_ver = cv2_version()
         if cv2_ver < (4, 13, 0):
-            g.logger.Warning('{}: OpenCV {} may not support all ONNX operators (e.g. TopK). '
-                             'OpenCV 4.13+ is recommended for ONNX YOLOv26 models.'.format(self.name, cv2.__version__))
-        g.logger.Debug(1, '{}: ONNX model detected, using readNetFromONNX'.format(self.name))
+            logger.warning('{}: OpenCV {} may not support all ONNX operators (e.g. TopK). '
+                           'OpenCV 4.13+ is recommended for ONNX YOLOv26 models.'.format(self.name, cv2.__version__))
+        logger.debug('{}: ONNX model detected, using readNetFromONNX'.format(self.name))
         self.net = cv2.dnn.readNetFromONNX(weights)
-        diff_time = t.stop_and_get_ms()
+        diff_time = f"{(_time.perf_counter() - _t0) * 1000:.2f} ms"
 
-        g.logger.Debug(
-            1, 'perf: processor:{} {} initialization (loading {} model from disk) took: {}'
+        logger.debug(
+            'perf: processor:{} {} initialization (loading {} model from disk) took: {}'
             .format(self.processor, self.name, weights, diff_time))
 
         self._setup_gpu(cv2_ver)
@@ -161,7 +165,7 @@ class YoloOnnx(YoloBase):
         else:
             predictions = output
 
-        g.logger.Debug(2, '{}: ONNX output shape={}, predictions={}, end2end={}'.format(
+        logger.debug('{}: ONNX output shape={}, predictions={}, end2end={}'.format(
             self.name, output.shape, predictions.shape, self.is_end2end))
 
         # Vectorized: extract best class and confidence per prediction
@@ -223,19 +227,19 @@ class YoloOnnx(YoloBase):
         if output.ndim == 3:
             output = output.squeeze(0)
 
-        g.logger.Debug(2, '{}: Native e2e output shape={}'.format(self.name, output.shape))
+        logger.debug('{}: Native e2e output shape={}'.format(self.name, output.shape))
 
         # Validate: garbled OpenCV output from broken NMS operators.
         confs = output[:, 4]
 
         # Garbled case 1: all confidences near-zero (OpenCV can't run NMS ops correctly)
         if confs.max() < 0.01:
-            g.logger.Debug(1, '{}: Native e2e confidences near-zero (max={:.6f}), '
-                           'falling back to pre-NMS layer'.format(self.name, confs.max()))
+            logger.debug('{}: Native e2e confidences near-zero (max={:.6f}), '
+                         'falling back to pre-NMS layer'.format(self.name, confs.max()))
             if self.pre_nms_layer:
                 self.is_native_e2e = False
                 return self._forward_and_parse(blob, 0, 0, conf_threshold)
-            g.logger.Error('{}: No pre-NMS fallback available'.format(self.name))
+            logger.error('{}: No pre-NMS fallback available'.format(self.name))
             return [], [], []
 
         # Garbled case 2: many detections with identical confidence (e.g. all 0.1274).
@@ -243,13 +247,13 @@ class YoloOnnx(YoloBase):
         if len(nonzero) > 10:
             unique_count = len(np.unique(np.round(nonzero, 4)))
             if unique_count < max(3, len(nonzero) * 0.1):
-                g.logger.Debug(1, '{}: Native e2e output looks garbled ({} unique conf values '
-                               'across {} detections), falling back to pre-NMS layer'.format(
-                                   self.name, unique_count, len(nonzero)))
+                logger.debug('{}: Native e2e output looks garbled ({} unique conf values '
+                             'across {} detections), falling back to pre-NMS layer'.format(
+                                 self.name, unique_count, len(nonzero)))
                 if self.pre_nms_layer:
                     self.is_native_e2e = False
                     return self._forward_and_parse(blob, 0, 0, conf_threshold)
-                g.logger.Error('{}: No pre-NMS fallback available'.format(self.name))
+                logger.error('{}: No pre-NMS fallback available'.format(self.name))
                 return [], [], []
 
         # Filter by confidence
@@ -274,7 +278,7 @@ class YoloOnnx(YoloBase):
         # Return as [x, y, w, h] for compatibility with base detect() method
         boxes = np.stack([x1, y1, x2 - x1, y2 - y1], axis=1).tolist()
 
-        g.logger.Debug(2, '{}: Native e2e: {} detections above {}'.format(
+        logger.debug('{}: Native e2e: {} detections above {}'.format(
             self.name, len(class_ids), conf_threshold))
 
         return class_ids, confidences, boxes

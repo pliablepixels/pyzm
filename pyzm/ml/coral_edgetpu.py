@@ -1,18 +1,18 @@
+import logging
+import time as _time
 import numpy as np
 import sys
-import time
 import datetime
 import re
 import cv2
-from pyzm.helpers.Base import Base
-from pyzm.helpers.utils import Timer
-import pyzm.helpers.globals as g
 
 
 
 from PIL import Image
 import portalocker
 import os
+
+logger = logging.getLogger("pyzm")
 
 from pycoral.adapters import common
 from pycoral.adapters import detect
@@ -23,7 +23,7 @@ from pycoral.utils.edgetpu import make_interpreter
 # Class to handle Yolo based detection
 
 
-class Tpu(Base):
+class Tpu:
 
     def __init__(self, options={} ):
         self.classes = {}
@@ -34,7 +34,7 @@ class Tpu(Base):
         self.lock_timeout = int(options.get(self.processor+'_max_lock_wait') or 120)
         self.disable_locks = options.get('disable_locks', 'no')
         if self.disable_locks == 'no':
-            g.logger.Debug (2,'portalock: max:{}, name:{}, timeout:{}'.format(self.lock_maximum, self.lock_name, self.lock_timeout))
+            logger.debug('portalock: max:{}, name:{}, timeout:{}'.format(self.lock_maximum, self.lock_name, self.lock_timeout))
             self.lock = portalocker.BoundedSemaphore(maximum=self.lock_maximum, name=self.lock_name,timeout=self.lock_timeout)
         self.is_locked = False
         self.model = None
@@ -45,27 +45,27 @@ class Tpu(Base):
         if self.disable_locks == 'yes':
             return
         if self.is_locked:
-            g.logger.Debug (2, '{} portalock already acquired'.format(self.lock_name))
+            logger.debug('{} portalock already acquired'.format(self.lock_name))
             return
         try:
-            g.logger.Debug (2,'Waiting for {} portalock...'.format(self.lock_name))
+            logger.debug('Waiting for {} portalock...'.format(self.lock_name))
             self.lock.acquire()
-            g.logger.Debug (2,'Got {} portalock'.format(self.lock_name))
+            logger.debug('Got {} portalock'.format(self.lock_name))
             self.is_locked = True
 
         except portalocker.AlreadyLocked:
-            g.logger.Error ('Timeout waiting for {} portalock for {} seconds'.format(self.lock_name, self.lock_timeout))
+            logger.error('Timeout waiting for {} portalock for {} seconds'.format(self.lock_name, self.lock_timeout))
             raise ValueError ('Timeout waiting for {} portalock for {} seconds'.format(self.lock_name, self.lock_timeout))
 
     def release_lock(self):
         if self.disable_locks == 'yes':
             return
         if not self.is_locked:
-            g.logger.Debug (2, '{} portalock already released'.format(self.lock_name))
+            logger.debug('{} portalock already released'.format(self.lock_name))
             return
         self.lock.release()
         self.is_locked = False
-        g.logger.Debug (2,'Released portalock {}'.format(self.lock_name))
+        logger.debug('Released portalock {}'.format(self.lock_name))
 
 
     def populate_class_labels(self):
@@ -78,7 +78,7 @@ class Tpu(Base):
                 self.classes[int(classID)] = label.strip()
             fp.close()
         else:
-            g.logger.Debug(1,'No label file provided for this model')
+            logger.debug('No label file provided for this model')
             raise ValueError ('No label file provided for this model')
 
     def get_classes(self):
@@ -86,16 +86,16 @@ class Tpu(Base):
 
     def load_model(self):
         name = self.options.get('name') or 'TPU'
-        g.logger.Debug (1, '|--------- Loading "{}" model from disk -------------|'.format(name))
+        logger.debug('|--------- Loading "{}" model from disk -------------|'.format(name))
 
         #self.model = DetectionEngine(self.options.get('object_weights'))
         # Initialize the TF interpreter
-        t = Timer()
+        _t0 = _time.perf_counter()
         self.model = make_interpreter(self.options.get('object_weights'))
         self.model.allocate_tensors()
-        diff_time = t.stop_and_get_ms()
-        g.logger.Debug(
-            1,'perf: processor:{} TPU initialization (loading {} from disk) took: {}'
+        diff_time = f"{(_time.perf_counter() - _t0) * 1000:.2f} ms"
+        logger.debug(
+            'perf: processor:{} TPU initialization (loading {} from disk) took: {}'
             .format(self.processor, self.options.get('object_weights'),diff_time))
         
     
@@ -160,19 +160,19 @@ class Tpu(Base):
             if not self.model:
                 self.load_model()
 
-            g.logger.Debug(1,
+            logger.debug(
                 '|---------- TPU (input image: {}w*{}h) ----------|'
                 .format(Width, Height))
-            t= Timer()            
+            _t0 = _time.perf_counter()
             _, scale = common.set_resized_input(
                 self.model, img.size, lambda size: img.resize(size, Image.LANCZOS))
             self.model.invoke()
             objs = detect.get_objects(self.model, float(self.options.get('object_min_confidence')), scale)
 
-        
+
             #outs = self.model.detect_with_image(img, threshold=int(self.options.get('object_min_confidence')),
             #        keep_aspect_ratio=True, relative_coord=False)
-            diff_time = t.stop_and_get_ms()
+            diff_time = f"{(_time.perf_counter() - _t0) * 1000:.2f} ms"
 
             if self.options.get('auto_lock',True):
                 self.release_lock()
@@ -181,9 +181,8 @@ class Tpu(Base):
                 self.release_lock()
             raise
 
-        diff_time = t.stop_and_get_ms()
-        g.logger.Debug(
-            1,'perf: processor:{} Coral TPU detection took: {}'.format(self.processor, diff_time))
+        diff_time = f"{(_time.perf_counter() - _t0) * 1000:.2f} ms"
+        logger.debug('perf: processor:{} Coral TPU detection took: {}'.format(self.processor, diff_time))
       
         bbox = []
         labels = []
@@ -201,5 +200,5 @@ class Tpu(Base):
             labels.append(self.classes.get(obj.id))
             conf.append(float(obj.score))
 
-        g.logger.Debug(3,'Coral object returning: {},{},{}'.format(bbox,labels,conf))
+        logger.debug('Coral object returning: {},{},{}'.format(bbox,labels,conf))
         return bbox, labels, conf,['coral']*len(labels)

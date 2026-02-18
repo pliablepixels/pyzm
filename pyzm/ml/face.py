@@ -1,11 +1,9 @@
+import logging
 
-from pyzm.helpers.Base import Base
-import pyzm.helpers.globals as g
-
-
+logger = logging.getLogger("pyzm")
 
 
-class Face(Base):
+class Face:
     def __init__(self, options={}):
 
         self.model = None

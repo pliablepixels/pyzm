@@ -13,24 +13,6 @@ It provides:
 
 `Source on GitHub <https://github.com/pliablepixels/pyzm>`__
 
-What's new in v2
------------------
-
-pyzm v2 is a major rewrite of the library:
-
-- **Typed API client** -- ``ZMClient`` replaces the old ``pyzm.api.ZMApi``.
-  Returns dataclass models (``Monitor``, ``Event``, ``Zone``) instead of raw dicts.
-- **Unified ML detector** -- ``Detector`` is the single entry point for all
-  detection backends. No more importing ``pyzm.ml.yolo.Yolo`` directly.
-- **Pydantic v2 config** -- ``DetectorConfig``, ``ModelConfig``, ``StreamConfig``
-  replace INI-style config parsing. YAML configs are loaded via ``from_dict()``.
-- **Typed results** -- ``DetectionResult`` with ``.labels``, ``.summary``,
-  ``.annotate()`` instead of nested dicts.
-- **Remote detection** -- ``pyzm.serve`` is a built-in FastAPI server. Use
-  ``Detector(gateway=...)`` to send images to a GPU box over HTTP.
-- **Event tagging** -- ``ZMClient.tag_event()`` creates and associates object
-  tags on events (ZM >= 1.37.44).
-
 See :doc:`guide/installation` for detailed instructions, including notes on
 system-managed Python environments.
 
@@ -62,7 +44,6 @@ Quick example
 
    guide/installation
    guide/quickstart
-   guide/migration
    guide/detection
    guide/serve
    guide/training
