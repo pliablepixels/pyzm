@@ -29,11 +29,18 @@ def main() -> None:
     ap.add_argument("--auth-user", default="admin")
     ap.add_argument("--auth-password", default="")
     ap.add_argument("--token-secret", default="change-me")
+    ap.add_argument("--debug", action="store_true", help="Enable debug logging")
     ap.add_argument(
         "--config",
         help="Path to a YAML config file (ServerConfig). Overrides CLI flags.",
     )
     args = ap.parse_args()
+
+    import logging
+
+    level = logging.DEBUG if args.debug else logging.INFO
+    logging.basicConfig(level=level, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    logging.getLogger("pyzm").setLevel(level)
 
     from pyzm.models.config import Processor, ServerConfig
 
@@ -62,7 +69,12 @@ def main() -> None:
 
     import uvicorn
 
-    uvicorn.run(app, host=config.host, port=config.port)
+    uvicorn.run(
+        app,
+        host=config.host,
+        port=config.port,
+        log_level="debug" if args.debug else "info",
+    )
 
 
 if __name__ == "__main__":

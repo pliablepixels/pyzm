@@ -50,7 +50,9 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
     if config.auth_enabled:
         verify_token = create_token_dependency(config)
         auth_deps = [Depends(verify_token)]
-        app.post("/login")(create_login_route(config))
+    # Always register /login so clients with credentials configured don't
+    # get a 404.  When auth is disabled the route accepts any credentials.
+    app.post("/login")(create_login_route(config))
 
     # -- Routes --------------------------------------------------------------
 

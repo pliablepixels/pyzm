@@ -16,12 +16,17 @@ _bearer_scheme = HTTPBearer()
 
 
 def create_login_route(config: "ServerConfig"):
-    """Return a login endpoint handler bound to *config*."""
+    """Return a login endpoint handler bound to *config*.
+
+    When ``config.auth_enabled`` is ``False`` the route accepts any
+    credentials so that clients with ``ml_user`` / ``ml_password``
+    configured don't fail with a 404.
+    """
 
     def login(credentials: dict):
         username = credentials.get("username", "")
         password = credentials.get("password", "")
-        if (
+        if config.auth_enabled and (
             username != config.auth_username
             or password != config.auth_password.get_secret_value()
         ):

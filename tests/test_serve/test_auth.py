@@ -104,3 +104,62 @@ class TestAuthProtectedEndpoints:
     def test_health_no_auth_required(self, auth_client):
         resp = auth_client.get("/health")
         assert resp.status_code == 200
+
+
+# ===================================================================
+# No-auth server still accepts /login
+# ===================================================================
+
+@pytest.fixture
+def noauth_client():
+    """Server with auth_enabled=False."""
+    config = ServerConfig(models=["yolov4"], auth_enabled=False)
+
+    with patch("pyzm.serve.app.Detector") as MockDetector:
+        mock_det = _mock_detector()
+        MockDetector.return_value = mock_det
+        mock_det._ensure_pipeline = MagicMock()
+        from pyzm.serve.app import create_app
+        application = create_app(config)
+        from fastapi.testclient import TestClient
+        with TestClient(application) as tc:
+            yield tc
+
+
+class TestNoAuthLogin:
+    """When the server runs without --auth, /login should still work."""
+
+    def test_login_accepts_any_credentials(self, noauth_client):
+        resp = noauth_client.post("/login", json={"username": "anyone", "password": "whatever"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "access_token" in data
+
+    def test_login_returns_valid_token(self, noauth_client):
+        resp = noauth_client.post("/login", json={"username": "admin", "password": "secret"})
+        token = resp.json()["access_token"]
+        # Token should be a non-empty string
+        assert isinstance(token, str) and len(token) > 0
+
+    @pytest.mark.integration
+    def test_detect_works_without_token(self, noauth_client):
+        """Endpoints don't require auth when auth is disabled."""
+        import cv2, numpy as np
+        img = np.zeros((100, 100, 3), dtype=np.uint8)
+        _, buf = cv2.imencode(".jpg", img)
+        resp = noauth_client.post("/detect", files={"file": ("t.jpg", buf.tobytes(), "image/jpeg")})
+        assert resp.status_code == 200
+
+    @pytest.mark.integration
+    def test_detect_works_with_token(self, noauth_client):
+        """Endpoints accept (but don't require) a Bearer token when auth is disabled."""
+        import cv2, numpy as np
+        token = noauth_client.post("/login", json={"username": "x", "password": "y"}).json()["access_token"]
+        img = np.zeros((100, 100, 3), dtype=np.uint8)
+        _, buf = cv2.imencode(".jpg", img)
+        resp = noauth_client.post(
+            "/detect",
+            files={"file": ("t.jpg", buf.tobytes(), "image/jpeg")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
