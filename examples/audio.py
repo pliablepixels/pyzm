@@ -10,6 +10,10 @@ Usage:
     python audio.py /path/to/event.mp4
 
 Any format ffmpeg can read (WAV, MP3, MP4, etc.) is supported.
+
+See also:
+    Detection options, multi-model pipelines:
+        https://pyzmv2.readthedocs.io/en/latest/guide/detection.html
 """
 
 import sys

@@ -3,6 +3,12 @@
 
 Usage:
     python stream.py <event_id> [<monitor_id>]
+
+See also:
+    StreamConfig options, frame strategies, multi-model pipelines:
+        https://pyzmv2.readthedocs.io/en/latest/guide/detection.html
+    Quick-start guide:
+        https://pyzmv2.readthedocs.io/en/latest/guide/quickstart.html
 """
 
 import sys

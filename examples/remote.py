@@ -17,6 +17,12 @@ Prerequisites:
 
 Usage:
     python remote.py <image_path> [gateway_url]
+
+See also:
+    Server setup, authentication, YAML config, API reference:
+        https://pyzmv2.readthedocs.io/en/latest/guide/serve.html
+    Quick-start guide:
+        https://pyzmv2.readthedocs.io/en/latest/guide/quickstart.html
 """
 
 import sys

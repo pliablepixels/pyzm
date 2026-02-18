@@ -2,6 +2,12 @@
 """pyzm v2 quick-start examples.
 
 Each section is self-contained.  Comment/uncomment what you need.
+
+See also:
+    Full documentation: https://pyzmv2.readthedocs.io/en/latest/
+    Quick-start guide:  https://pyzmv2.readthedocs.io/en/latest/guide/quickstart.html
+    Detection options:  https://pyzmv2.readthedocs.io/en/latest/guide/detection.html
+    Remote server:      https://pyzmv2.readthedocs.io/en/latest/guide/serve.html
 """
 
 import pyzm
