@@ -15,7 +15,7 @@ print(f"pyzm {pyzm.__version__}")
 from pyzm import ZMClient
 
 zm = ZMClient(
-    apiurl="https://demo.zoneminder.com/zm/api",
+    api_url="https://demo.zoneminder.com/zm/api",
     user="zmuser",
     password="zmpass",
     # verify_ssl=False,  # for self-signed certs
@@ -39,7 +39,8 @@ if events:
 
 # -- Zones for a monitor --
 if zm.monitors():
-    zones = zm.monitor_zones(zm.monitors()[0].id)
+    m = zm.monitors()[0]
+    zones = m.get_zones()
     for z in zones:
         print(f"  Zone: {z.name} ({len(z.points)} points)")
 
@@ -92,13 +93,13 @@ else:
 # ============================================================================
 
 from pyzm import ZMClient, Detector, StreamConfig
-from pyzm.models.config import DetectorConfig
 
-zm = ZMClient(apiurl="https://zm.example.com/zm/api", user="admin", password="secret")
+zm = ZMClient(api_url="https://zm.example.com/zm/api", user="admin", password="secret")
 detector = Detector(models=["yolo11s"])
 
 event_id = 12345
-zones = zm.monitor_zones(1)
+m = zm.monitor(1)
+zones = m.get_zones()
 
 result = detector.detect_event(
     zm,
@@ -115,7 +116,8 @@ if result.matched:
     result.annotate()  # draw boxes on the image
 
     # Update ZM event notes
-    zm.update_event_notes(event_id, result.summary)
+    ev = zm.event(event_id)
+    ev.update_notes(result.summary)
 
 
 # ============================================================================

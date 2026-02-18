@@ -27,7 +27,7 @@ with open("/etc/zm/secrets.yml") as f:
 secrets = conf.get("secrets", {})
 
 zm = ZMClient(
-    apiurl=secrets.get("ZM_API_PORTAL"),
+    api_url=secrets.get("ZM_API_PORTAL"),
     portal_url=secrets.get("ZM_PORTAL"),
     user=secrets.get("ZM_USER"),
     password=secrets.get("ZM_PASSWORD"),
@@ -107,7 +107,8 @@ stream_cfg = StreamConfig(
 )
 
 # Get zones for the monitor
-zones = zm.monitor_zones(int(mid)) if mid else None
+m = zm.monitor(int(mid)) if mid else None
+zones = m.get_zones() if m else None
 
 # Run detection
 detector = Detector.from_dict(ml_options)

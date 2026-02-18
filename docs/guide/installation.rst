@@ -44,16 +44,19 @@ installer):
 
 .. code-block:: bash
 
-   # All extras (remote ML server + model fine-tuning UI):
-   sudo /opt/zoneminder/venv/bin/pip install "pyzm[serve,train]"
+   # Everything (ZM + ML + detection server + training UI):
+   sudo /opt/zoneminder/venv/bin/pip install "pyzm[ml,serve,train]"
 
-   # Only the remote ML server:
-   sudo /opt/zoneminder/venv/bin/pip install "pyzm[serve]"
+   # ML detection + remote server:
+   sudo /opt/zoneminder/venv/bin/pip install "pyzm[ml,serve]"
 
-   # Only the model fine-tuning UI:
-   sudo /opt/zoneminder/venv/bin/pip install "pyzm[train]"
+   # ML detection + training UI:
+   sudo /opt/zoneminder/venv/bin/pip install "pyzm[ml,train]"
 
-   # Core only (API + ML detection, no server/training):
+   # ML detection only:
+   sudo /opt/zoneminder/venv/bin/pip install "pyzm[ml]"
+
+   # ZM API client only (monitors, events, zones — no ML):
    sudo /opt/zoneminder/venv/bin/pip install pyzm
 
 Path B: Install from source
@@ -67,13 +70,16 @@ OpenCV shim, and ownership in one step.
    git clone https://github.com/pliablepixels/pyzm.git
    cd pyzm
 
-   # All extras (remote ML server + model fine-tuning UI):
-   sudo ./scripts/setup_venv.sh --extras serve,train
+   # Everything (ZM + ML + detection server + training UI):
+   sudo ./scripts/setup_venv.sh --extras ml,serve,train
 
-   # Only the remote ML server:
-   sudo ./scripts/setup_venv.sh --extras serve
+   # ML detection + remote server:
+   sudo ./scripts/setup_venv.sh --extras ml,serve
 
-   # Core only (API + ML detection, no server/training):
+   # ML detection only:
+   sudo ./scripts/setup_venv.sh --extras ml
+
+   # ZM API client only (monitors, events, zones — no ML):
    sudo ./scripts/setup_venv.sh
 
    # Custom venv path:
@@ -102,12 +108,14 @@ What each extra installs
 
    * - Extra
      - Additional packages
-   * - *(core)*
-     - requests, pydantic, numpy, Pillow, PyYAML, onnx, and others
+   * - *(base)*
+     - requests, pydantic, dateparser, mysql-connector-python, python-dotenv
+   * - ``[ml]``
+     - numpy, Pillow, onnx, Shapely, portalocker
    * - ``[serve]``
-     - fastapi, uvicorn, python-multipart, PyJWT
+     - ``[ml]`` deps + fastapi, uvicorn, python-multipart, PyJWT, PyYAML
    * - ``[train]``
-     - ultralytics, streamlit, streamlit-drawable-canvas, st-clickable-images
+     - ``[ml]`` deps + ultralytics, streamlit, streamlit-drawable-canvas, st-clickable-images, PyYAML
 
 .. note::
 
@@ -149,7 +157,7 @@ On macOS the venv can live anywhere — there is no ``www-data`` user:
 .. code-block:: bash
 
    python3 -m venv ~/zm-venv --system-site-packages
-   ~/zm-venv/bin/pip install -e ".[serve,train]"
+   ~/zm-venv/bin/pip install -e ".[ml,serve,train]"
 
 Optional dependencies
 ---------------------
@@ -184,7 +192,11 @@ Verifying the installation
 
 .. code-block:: bash
 
+   # Base install (ZM API client):
    /opt/zoneminder/venv/bin/python -c "import pyzm; print(pyzm.__version__)"
+
+   # ML detection (requires pyzm[ml]):
+   /opt/zoneminder/venv/bin/python -c "from pyzm import Detector; print('ML OK')"
 
 To verify the training UI is available:
 

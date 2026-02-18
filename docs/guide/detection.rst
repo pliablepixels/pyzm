@@ -1,6 +1,10 @@
 ML Detection Deep-Dive
 ======================
 
+.. note::
+
+   This module requires the ``[ml]`` extra: ``pip install "pyzm[ml]"``
+
 This guide covers the architecture and configuration of pyzm's ML
 detection pipeline in detail.
 
@@ -310,7 +314,7 @@ specific zones:
             ignore_pattern="(car|truck)"),  # suppress parked vehicles
    ]
 
-When using ZoneMinder events, use ``zm.monitor_zones(monitor_id)`` to
+When using ZoneMinder events, use ``zm.monitor(monitor_id).get_zones()`` to
 fetch zones configured in the ZM web UI.
 
 

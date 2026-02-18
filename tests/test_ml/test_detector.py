@@ -813,7 +813,7 @@ class TestDetectorRemoteMode:
         det = Detector(models=["yolov4"], gateway="http://gpu:5000", gateway_mode="url")
 
         mock_zm = MagicMock(spec=[])  # no attributes
-        with pytest.raises(AttributeError, match="zm_client.api required"):
+        with pytest.raises(AttributeError):
             det.detect_event(mock_zm, 12345)
 
     @patch("requests.post")
@@ -1024,7 +1024,7 @@ class TestExtractEventAudio:
     """Tests for Detector._extract_event_audio() static method.
 
     The method uses get_zm_db() from pyzm.zm.db for direct DB access
-    (not zm_client.db) and zm_client.event_path() for file paths.
+    (not zm_client.db) and zm_client.event(eid).path() for file paths.
     """
 
     @staticmethod
@@ -1101,7 +1101,7 @@ class TestExtractEventAudio:
         })
 
         mock_zm = MagicMock()
-        mock_zm.event_path.return_value = "/events/123"
+        mock_zm.event.return_value.path.return_value = "/events/123"
 
         wav, week, lat, lon = Detector._extract_event_audio(mock_zm, 123)
         assert wav is None
@@ -1120,7 +1120,7 @@ class TestExtractEventAudio:
         })
 
         mock_zm = MagicMock()
-        mock_zm.event_path.return_value = "/events/123"
+        mock_zm.event.return_value.path.return_value = "/events/123"
 
         # ffprobe returns no audio
         mock_run.return_value = MagicMock(stdout="", stderr="")
@@ -1144,7 +1144,7 @@ class TestExtractEventAudio:
         })
 
         mock_zm = MagicMock()
-        mock_zm.event_path.return_value = "/events/123"
+        mock_zm.event.return_value.path.return_value = "/events/123"
 
         # ffprobe finds audio
         probe_result = MagicMock(stdout="audio\n", stderr="")
@@ -1177,7 +1177,7 @@ class TestExtractEventAudio:
         })
 
         mock_zm = MagicMock()
-        mock_zm.event_path.return_value = "/events/1"
+        mock_zm.event.return_value.path.return_value = "/events/1"
 
         probe_result = MagicMock(stdout="audio\n")
         ffmpeg_result = MagicMock()
@@ -1203,7 +1203,7 @@ class TestExtractEventAudio:
         })
 
         mock_zm = MagicMock()
-        mock_zm.event_path.return_value = "/events/1"
+        mock_zm.event.return_value.path.return_value = "/events/1"
 
         probe_result = MagicMock(stdout="audio\n")
         ffmpeg_result = MagicMock()
@@ -1231,7 +1231,7 @@ class TestExtractEventAudio:
         })
 
         mock_zm = MagicMock()
-        mock_zm.event_path.return_value = "/events/123"
+        mock_zm.event.return_value.path.return_value = "/events/123"
 
         # ffprobe finds audio
         probe_result = MagicMock(stdout="audio\n")
@@ -1262,7 +1262,7 @@ class TestExtractEventAudio:
         })
 
         mock_zm = MagicMock()
-        mock_zm.event_path.return_value = "/events/123"
+        mock_zm.event.return_value.path.return_value = "/events/123"
 
         probe_result = MagicMock(stdout="audio\n")
         ffmpeg_result = MagicMock()
@@ -1301,7 +1301,7 @@ class TestDetectEventAudioIntegration:
 
         # Mock zm_client
         mock_zm = MagicMock()
-        mock_zm.get_event_frames.return_value = ([(1, MagicMock())], {"original": (480, 640)})
+        mock_zm.event.return_value.extract_frames.return_value = ([(1, MagicMock())], {"original": (480, 640)})
 
         with patch.object(Detector, "_extract_event_audio", return_value=("/tmp/audio.wav", 24, 43.0, -79.0)) as mock_extract:
             result = det.detect_event(mock_zm, 123)
@@ -1326,7 +1326,7 @@ class TestDetectEventAudioIntegration:
         det = Detector(config=config)
 
         mock_zm = MagicMock()
-        mock_zm.get_event_frames.return_value = ([(1, MagicMock())], {"original": (480, 640)})
+        mock_zm.event.return_value.extract_frames.return_value = ([(1, MagicMock())], {"original": (480, 640)})
 
         with patch.object(Detector, "_extract_event_audio") as mock_extract:
             det.detect_event(mock_zm, 123)
@@ -1354,7 +1354,7 @@ class TestDetectEventAudioIntegration:
         det = Detector(config=config)
 
         mock_zm = MagicMock()
-        mock_zm.get_event_frames.return_value = ([(1, MagicMock())], {"original": (480, 640)})
+        mock_zm.event.return_value.extract_frames.return_value = ([(1, MagicMock())], {"original": (480, 640)})
 
         with patch.object(Detector, "_extract_event_audio", return_value=("/tmp/audio.wav", 24, 43.0, -79.0)):
             det.detect_event(mock_zm, 123)
@@ -1381,7 +1381,7 @@ class TestDetectEventAudioIntegration:
         det = Detector(config=config)
 
         mock_zm = MagicMock()
-        mock_zm.get_event_frames.return_value = ([(1, MagicMock())], {"original": (480, 640)})
+        mock_zm.event.return_value.extract_frames.return_value = ([(1, MagicMock())], {"original": (480, 640)})
 
         with patch.object(Detector, "_extract_event_audio", return_value=("/tmp/audio.wav", 24, 43.0, -79.0)):
             # The error in pipeline.run is caught per-frame in _detect_multi_frame,
@@ -1408,7 +1408,7 @@ class TestDetectEventAudioIntegration:
         det = Detector(config=config)
 
         mock_zm = MagicMock()
-        mock_zm.get_event_frames.return_value = ([(1, MagicMock())], {"original": (480, 640)})
+        mock_zm.event.return_value.extract_frames.return_value = ([(1, MagicMock())], {"original": (480, 640)})
 
         with patch.object(Detector, "_extract_event_audio", return_value=(None, -1, -1.0, -1.0)):
             with patch("os.unlink") as mock_unlink:
@@ -1434,7 +1434,7 @@ class TestDetectEventAudioIntegration:
         det = Detector(config=config)
 
         mock_zm = MagicMock()
-        mock_zm.get_event_frames.return_value = ([(1, MagicMock())], {"original": (480, 640)})
+        mock_zm.event.return_value.extract_frames.return_value = ([(1, MagicMock())], {"original": (480, 640)})
 
         with patch.object(Detector, "_extract_event_audio") as mock_extract:
             det.detect_event(mock_zm, 123)

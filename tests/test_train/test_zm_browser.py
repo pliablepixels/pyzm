@@ -150,7 +150,7 @@ class TestImportFrames:
 
         mock_zm = MagicMock()
         fake_img = np.zeros((100, 100, 3), dtype=np.uint8)
-        mock_zm.get_event_frames.return_value = (
+        mock_zm.event.return_value.extract_frames.return_value = (
             [(5, fake_img.copy()), (10, fake_img.copy())],
             {"original": (100, 100), "resized": None},
         )
@@ -180,7 +180,7 @@ class TestImportFrames:
 
         mock_zm = MagicMock()
         fake_img = np.zeros((100, 100, 3), dtype=np.uint8)
-        mock_zm.get_event_frames.return_value = (
+        mock_zm.event.return_value.extract_frames.return_value = (
             [(1, fake_img)],
             {"original": (100, 100), "resized": None},
         )
@@ -205,7 +205,7 @@ class TestImportFrames:
         ds, store = project
 
         mock_zm = MagicMock()
-        mock_zm.get_event_frames.side_effect = ConnectionError("timeout")
+        mock_zm.event.return_value.extract_frames.side_effect = ConnectionError("timeout")
 
         with patch("pyzm.train.zm_browser.st") as mock_st:
             mock_st.session_state = {"base_model": "yolo11s", "model_class_names": []}
@@ -221,7 +221,7 @@ class TestImportFrames:
         ds, store = project
 
         mock_zm = MagicMock()
-        mock_zm.get_event_frames.return_value = ([], {"original": None, "resized": None})
+        mock_zm.event.return_value.extract_frames.return_value = ([], {"original": None, "resized": None})
 
         with patch("pyzm.train.zm_browser.st") as mock_st:
             mock_st.session_state = {"base_model": "yolo11s", "model_class_names": []}
@@ -236,7 +236,8 @@ class TestImportFrames:
         ds, store = project
 
         mock_zm = MagicMock()
-        mock_zm.get_event_frames.return_value = ([], {"original": None, "resized": None})
+        mock_ev = mock_zm.event.return_value
+        mock_ev.extract_frames.return_value = ([], {"original": None, "resized": None})
 
         with patch("pyzm.train.zm_browser.st") as mock_st:
             mock_st.session_state = {"base_model": "yolo11s", "model_class_names": []}
@@ -245,8 +246,8 @@ class TestImportFrames:
 
             _import_frames(ds, store, args, mock_zm, 100, [5, 10, 15])
 
-        call_args = mock_zm.get_event_frames.call_args
-        assert call_args[0][0] == 100
+        mock_zm.event.assert_called_once_with(100)
+        call_args = mock_ev.extract_frames.call_args
         sc = call_args[1]["stream_config"]
         assert sc.frame_set == ["5", "10", "15"]
         assert sc.resize is None
@@ -256,7 +257,7 @@ class TestImportFrames:
 
         mock_zm = MagicMock()
         fake_img = np.zeros((50, 50, 3), dtype=np.uint8)
-        mock_zm.get_event_frames.return_value = (
+        mock_zm.event.return_value.extract_frames.return_value = (
             [(1, fake_img)],
             {"original": (50, 50), "resized": None},
         )

@@ -51,6 +51,17 @@ class TestEvents:
         assert filtered[0].id == any_event.id
 
 
+class TestMonitorEventsOOP:
+    """Tests for Monitor.events() OOP shim."""
+
+    def test_monitor_events_oop(self, any_monitor):
+        """Monitor.events() should return events scoped to that monitor."""
+        events = any_monitor.events(limit=5)
+        assert isinstance(events, list)
+        for e in events:
+            assert e.monitor_id == any_monitor.id
+
+
 class TestEventFilters:
     """Tests for event filter parameters that use CakePHP path syntax."""
 

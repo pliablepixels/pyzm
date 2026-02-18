@@ -15,16 +15,19 @@ AUTHOR_EMAIL = 'info@zoneminder.com'
 AUTHOR = 'Pliable Pixels'
 LICENSE = 'GPL'
 INSTALL_REQUIRES=[
-    'mysql-connector-python>=8.0.16',
     'requests>=2.18.4',
-    'portalocker>=2.3.0',
-    'Shapely >=1.7.0',
-    'numpy >=1.13.3',
-    'Pillow',
-    'python-dotenv',
-    'onnx>=1.12.0',
     'pydantic>=2.0.0',
-    'PyYAML>=5.0',
+    'dateparser>=1.1.0',
+    'mysql-connector-python>=8.0.16',
+    'python-dotenv',
+    ]
+
+_ML_REQUIRES=[
+    'numpy>=1.13.3',
+    'Pillow',
+    'onnx>=1.12.0',
+    'Shapely>=1.7.0',
+    'portalocker>=2.3.0',
     ]
 
 
@@ -64,17 +67,20 @@ setup(name = NAME,
       license = LICENSE,
       install_requires=INSTALL_REQUIRES,
       extras_require={
-          'serve': [
+          'ml': _ML_REQUIRES,
+          'serve': _ML_REQUIRES + [
               'fastapi>=0.100',
               'uvicorn>=0.20',
               'python-multipart>=0.0.5',
               'PyJWT>=2.0',
+              'PyYAML>=5.0',
           ],
-          'train': [
+          'train': _ML_REQUIRES + [
               'ultralytics>=8.3',
               'streamlit>=1.41',
               'streamlit-drawable-canvas>=0.9',
               'st-clickable-images>=0.0.3',
+              'PyYAML>=5.0',
           ],
       },
       packages=find_packages(exclude=["tests", "tests.*"]),
