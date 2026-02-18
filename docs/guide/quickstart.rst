@@ -79,6 +79,78 @@ Getting zones
 
 Zones are used by the ML detector for region-based filtering.
 
+Monitor control
+~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   # Alarm control
+   zm.arm(1)                           # trigger alarm on monitor 1
+   zm.disarm(1)                        # cancel alarm
+   status = zm.alarm_status(1)         # check alarm state
+
+   # Update monitor settings
+   zm.update_monitor(1, Function="Modect", Enabled="1")
+
+   # Daemon status
+   zm.daemon_status(1)                 # capture daemon (zmc) status
+
+Event management
+~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   # Delete a single event
+   zm.delete_event(12345)
+
+   # Bulk delete events matching filters
+   count = zm.delete_events(monitor_id=1, before="7 days ago", limit=500)
+   print(f"Deleted {count} events")
+
+System health
+~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   zm.is_running()          # True if ZM daemon is running
+   zm.system_load()         # {"1min": 0.5, "5min": 0.3, "15min": 0.2}
+   zm.disk_usage()          # disk percent info from ZM
+   zm.timezone()            # e.g. "America/New_York"
+
+Configuration
+~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   # List all config parameters
+   all_configs = zm.configs()
+
+   # Get a single config by name
+   cfg = zm.config("ZM_LANG_DEFAULT")
+   print(cfg["Value"])
+
+   # Set a config value (system configs are read-only)
+   zm.set_config("ZM_LANG_DEFAULT", "en_us")
+
+States, servers, and storage
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   # List ZM states
+   for s in zm.states():
+       print(s["Name"])
+
+   # State control
+   zm.stop()                # stop ZM
+   zm.start()               # start ZM
+   zm.restart()             # restart ZM
+   zm.set_state("my_state") # switch to a named state
+
+   # Multi-server setups
+   zm.servers()             # list all ZM servers
+   zm.storage()             # list storage areas with disk usage
+
 
 Detecting objects in an image
 ------------------------------
