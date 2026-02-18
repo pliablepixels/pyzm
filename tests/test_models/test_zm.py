@@ -6,7 +6,7 @@ from datetime import datetime
 
 import pytest
 
-from pyzm.models.zm import Event, Frame, Monitor, MonitorStatus, Zone
+from pyzm.models.zm import Event, Frame, Monitor, MonitorStatus, PTZCapabilities, Zone
 
 
 # ===================================================================
@@ -371,3 +371,117 @@ class TestZoneIgnorePattern:
         z = Zone(name="test", points=[(0, 0)])
         d = z.as_dict()
         assert d["ignore_pattern"] is None
+
+
+# ===================================================================
+# TestRaw -- raw() method on all models
+# ===================================================================
+
+class TestRaw:
+    """Tests for the raw() escape hatch on all ZM model dataclasses."""
+
+    def test_monitor_raw_from_api_dict(self):
+        api_data = {
+            "Monitor": {
+                "Id": "3", "Name": "Front Door", "Function": "Modect",
+                "Enabled": "1", "Width": "1920", "Height": "1080",
+                "Type": "Ffmpeg", "Path": "rtsp://cam/stream",
+                "Protocol": "rtsp", "MaxFPS": "30",
+            },
+            "Monitor_Status": {
+                "Status": "Connected", "CaptureFPS": "15.23",
+            },
+        }
+        m = Monitor.from_api_dict(api_data)
+        assert m.raw() is api_data
+        assert m.raw()["Monitor"]["Path"] == "rtsp://cam/stream"
+
+    def test_monitor_status_raw_from_api_dict(self):
+        status_data = {"Status": "Connected", "CaptureFPS": "15.23"}
+        api_data = {
+            "Monitor": {"Id": "1"},
+            "Monitor_Status": status_data,
+        }
+        m = Monitor.from_api_dict(api_data)
+        assert m.status.raw() is status_data
+
+    def test_monitor_raw_default_empty(self):
+        m = Monitor(id=1)
+        assert m.raw() == {}
+
+    def test_event_raw_from_api_dict(self):
+        api_data = {
+            "Event": {
+                "Id": "99", "Name": "Event 99", "MonitorId": "2",
+                "Cause": "Motion", "StorageId": "1",
+                "DiskSpace": "12345678",
+            },
+        }
+        ev = Event.from_api_dict(api_data)
+        assert ev.raw() is api_data
+        assert ev.raw()["Event"]["DiskSpace"] == "12345678"
+
+    def test_event_raw_default_empty(self):
+        ev = Event(id=1)
+        assert ev.raw() == {}
+
+    def test_frame_raw(self):
+        raw_entry = {
+            "Frame": {
+                "FrameId": "5", "EventId": "100", "Type": "Alarm",
+                "Score": "80", "Delta": "1.5", "TimeStamp": "2024-01-01 00:00:05",
+            },
+        }
+        f = Frame(frame_id=5, event_id=100, type="Alarm", score=80, delta=1.5, _raw=raw_entry)
+        assert f.raw() is raw_entry
+        assert f.raw()["Frame"]["TimeStamp"] == "2024-01-01 00:00:05"
+
+    def test_frame_raw_default_empty(self):
+        f = Frame(frame_id=1, event_id=1)
+        assert f.raw() == {}
+
+    def test_zone_raw(self):
+        raw_entry = {
+            "Zone": {
+                "Id": "1", "Name": "All", "MonitorId": "1",
+                "Type": "Active", "Coords": "0,0 639,0 639,479 0,479",
+                "AlarmRGB": "16711680",
+            },
+        }
+        z = Zone(name="All", points=[(0, 0), (639, 0), (639, 479), (0, 479)], _raw=raw_entry)
+        assert z.raw() is raw_entry
+        assert z.raw()["Zone"]["AlarmRGB"] == "16711680"
+
+    def test_zone_raw_default_empty(self):
+        z = Zone(name="test", points=[])
+        assert z.raw() == {}
+
+    def test_ptz_capabilities_raw_from_api_dict(self):
+        ctrl_data = {
+            "Id": "1", "Name": "Amcrest", "Type": "Ffmpeg",
+            "CanMove": "1", "CanZoom": "1", "CanPan": "1", "CanTilt": "1",
+            "HasPresets": "1", "NumPresets": "8",
+        }
+        ptz = PTZCapabilities.from_api_dict(ctrl_data)
+        assert ptz.raw() is ctrl_data
+        assert ptz.raw()["Name"] == "Amcrest"
+
+    def test_ptz_capabilities_raw_default_empty(self):
+        ptz = PTZCapabilities()
+        assert ptz.raw() == {}
+
+    def test_monitor_status_raw_default_empty(self):
+        ms = MonitorStatus()
+        assert ms.raw() == {}
+
+    def test_raw_not_in_repr(self):
+        """_raw should be excluded from repr output."""
+        api_data = {"Monitor": {"Id": "1", "Name": "Test"}, "Monitor_Status": {}}
+        m = Monitor.from_api_dict(api_data)
+        assert "_raw" not in repr(m)
+
+    def test_raw_not_in_equality(self):
+        """_raw should not affect equality comparison."""
+        m1 = Monitor(id=1, name="Test", _raw={"Monitor": {"Id": "1"}})
+        m2 = Monitor(id=1, name="Test", _raw={"different": "data"})
+        assert m1 == m2

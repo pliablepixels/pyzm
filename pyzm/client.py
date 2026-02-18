@@ -228,6 +228,7 @@ class ZMClient:
             zones.append(Zone(
                 name=zd.get("Name", ""),
                 points=points,
+                _raw=z,
             ))
         return zones
 
@@ -439,6 +440,7 @@ class ZMClient:
                 type=fd.get("Type", ""),
                 score=int(fd.get("Score", 0)),
                 delta=float(fd.get("Delta", 0)),
+                _raw=entry,
             ))
         return frames
 

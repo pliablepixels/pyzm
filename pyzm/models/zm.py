@@ -41,6 +41,12 @@ class PTZCapabilities:
     # Other
     can_reset: bool = False
 
+    _raw: dict = field(default_factory=dict, repr=False, compare=False)
+
+    def raw(self) -> dict:
+        """Return the full, unmodified API response dict."""
+        return self._raw
+
     @classmethod
     def from_api_dict(cls, data: dict) -> PTZCapabilities:
         """Build from a ZM API ``Control`` JSON dict."""
@@ -64,6 +70,7 @@ class PTZCapabilities:
             has_home_preset=_bool("HasHomePreset"),
             can_set_presets=_bool("CanSetPresets"),
             can_reset=_bool("CanReset"),
+            _raw=data,
         )
 
 
@@ -74,6 +81,12 @@ class Zone:
     points: list[tuple[int, int]]
     pattern: str | None = None
     ignore_pattern: str | None = None
+
+    _raw: dict = field(default_factory=dict, repr=False, compare=False)
+
+    def raw(self) -> dict:
+        """Return the full, unmodified API response dict."""
+        return self._raw
 
     def as_dict(self) -> dict:
         return {
@@ -92,6 +105,12 @@ class Frame:
     type: str = ""        # "Alarm", "Bulk", "Normal", etc.
     score: int = 0
     delta: float = 0.0
+
+    _raw: dict = field(default_factory=dict, repr=False, compare=False)
+
+    def raw(self) -> dict:
+        """Return the full, unmodified API response dict."""
+        return self._raw
 
 
 @dataclass
@@ -120,11 +139,16 @@ class Event:
     max_score_frame_id: int | None = None
     storage_path: str = ""
 
+    _raw: dict = field(default_factory=dict, repr=False, compare=False)
     _client: ZMClient | None = field(default=None, repr=False, compare=False)
 
     # ------------------------------------------------------------------
     # Resource methods (delegate to ZMClient internals)
     # ------------------------------------------------------------------
+
+    def raw(self) -> dict:
+        """Return the full, unmodified API response dict."""
+        return self._raw
 
     def get_frames(self) -> list[Frame]:
         """Fetch per-frame metadata (Score, Type, Delta) for this event."""
@@ -183,6 +207,7 @@ class Event:
             max_score=int(ev.get("MaxScore", 0)),
             max_score_frame_id=int(ev["MaxScoreFrameId"]) if ev.get("MaxScoreFrameId") else None,
             storage_path=ev.get("StoragePath", ""),
+            _raw=data,
             _client=client,
         )
 
@@ -195,6 +220,12 @@ class MonitorStatus:
     analysis_fps: float = 0.0
     bandwidth: int = 0       # CaptureBandwidth in bytes
     capturing: str = "None"  # "None", "Capturing", etc.
+
+    _raw: dict = field(default_factory=dict, repr=False, compare=False)
+
+    def raw(self) -> dict:
+        """Return the full, unmodified API response dict."""
+        return self._raw
 
 
 @dataclass
@@ -221,11 +252,16 @@ class Monitor:
     zones: list[Zone] = field(default_factory=list)
     status: MonitorStatus = field(default_factory=MonitorStatus)
 
+    _raw: dict = field(default_factory=dict, repr=False, compare=False)
     _client: ZMClient | None = field(default=None, repr=False, compare=False)
 
     # ------------------------------------------------------------------
     # Resource methods (delegate to ZMClient internals)
     # ------------------------------------------------------------------
+
+    def raw(self) -> dict:
+        """Return the full, unmodified API response dict."""
+        return self._raw
 
     def get_zones(self) -> list[Zone]:
         """Fetch detection zones for this monitor from the ZM API."""
@@ -371,7 +407,9 @@ class Monitor:
                 analysis_fps=float(status_data.get("AnalysisFPS", 0) or 0),
                 bandwidth=int(status_data.get("CaptureBandwidth", 0) or 0),
                 capturing=status_data.get("Capturing", "None"),
+                _raw=status_data,
             ),
+            _raw=data,
             _client=client,
         )
 
