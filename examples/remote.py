@@ -3,17 +3,23 @@
 
 Two modes are supported:
 
-  Image mode (default):
-    Client JPEG-encodes the image and uploads it to the server.
-
-  URL mode:
+  URL mode (default):
     Client sends ZM frame URLs to the server, which fetches
     images directly from ZoneMinder.  Useful when the GPU box
     has direct network access to ZM.
 
+  Image mode:
+    Client JPEG-encodes the image and uploads it to the server.
+    Use when the server can't reach ZM directly.
+
 Prerequisites:
-    Start the server on the GPU box:
+    Start the server on the GPU box (no auth):
         python -m pyzm.serve --models yolo11s --port 5000
+
+    With auth:
+        python -m pyzm.serve --models yolo11s --port 5000 --auth --auth-password secret
+
+    For YAML config, see examples/objectconfig.yml or the serve guide.
 
 Usage:
     python remote.py <image_path> [gateway_url]
