@@ -15,7 +15,7 @@ print(f"pyzm {pyzm.__version__}")
 from pyzm import ZMClient
 
 zm = ZMClient(
-    url="https://demo.zoneminder.com/zm/api",
+    apiurl="https://demo.zoneminder.com/zm/api",
     user="zmuser",
     password="zmpass",
     # verify_ssl=False,  # for self-signed certs
@@ -206,9 +206,13 @@ result = detector.detect("/tmp/image.jpg")
 # 6. LOGGING
 # ============================================================================
 
-from pyzm.log import setup_zm_logging
+# Standalone (ML only, no ZoneMinder):
+import logging
+logging.basicConfig(level=logging.DEBUG)
+# All pyzm internals log to the "pyzm" logger -- this is all you need.
 
-# ZM-native logging (reads zm.conf + DB Config table automatically)
+# With ZoneMinder (reads zm.conf + DB Config table automatically):
+from pyzm.log import setup_zm_logging
 adapter = setup_zm_logging(name="myapp", override={"dump_console": True})
 adapter.Info("Hello from pyzm")
 adapter.Debug(3, "Detail")
