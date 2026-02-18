@@ -640,3 +640,528 @@ class TestZMClientEventFrames:
         assert len(frames) == 1
         assert frames[0].frame_id == 42
         assert frames[0].score == 95
+
+
+# ===================================================================
+# TestZMClient - Arm / Disarm
+# ===================================================================
+
+class TestZMClientArmDisarm:
+    """Tests for arm, disarm, alarm_status."""
+
+    @patch("pyzm.client.ZMAPI")
+    def test_arm(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        client.arm(5)
+        mock_api.get.assert_called_with("monitors/alarm/id:5/command:on.json")
+
+    @patch("pyzm.client.ZMAPI")
+    def test_disarm(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        client.disarm(5)
+        mock_api.get.assert_called_with("monitors/alarm/id:5/command:off.json")
+
+    @patch("pyzm.client.ZMAPI")
+    def test_alarm_status(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        client.alarm_status(5)
+        mock_api.get.assert_called_with("monitors/alarm/id:5/command:status.json")
+
+
+# ===================================================================
+# TestZMClient - Update Monitor
+# ===================================================================
+
+class TestZMClientUpdateMonitor:
+    """Tests for update_monitor."""
+
+    @patch("pyzm.client.ZMAPI")
+    def test_update_monitor_puts_cakephp_keys(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        client.update_monitor(3, Function="Modect", Enabled="1")
+        mock_api.put.assert_called_once_with(
+            "monitors/3.json",
+            data={"Monitor[Function]": "Modect", "Monitor[Enabled]": "1"},
+        )
+
+    @patch("pyzm.client.ZMAPI")
+    def test_update_monitor_invalidates_cache(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {
+            "monitors": [_sample_monitor_api_data(1, "Front Door")]
+        }
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        client.monitors()  # populate cache
+        assert client._monitors is not None
+
+        client.update_monitor(1, Name="New Name")
+        assert client._monitors is None  # cache invalidated
+
+
+# ===================================================================
+# TestZMClient - Delete Event
+# ===================================================================
+
+class TestZMClientDeleteEvent:
+    """Tests for delete_event and delete_events."""
+
+    @patch("pyzm.client.ZMAPI")
+    def test_delete_event(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        client.delete_event(42)
+        mock_api.delete.assert_called_once_with("events/42.json")
+
+    @patch("pyzm.client.ZMAPI")
+    def test_delete_events_queries_then_deletes(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {
+            "events": [
+                _sample_event_api_data(100),
+                _sample_event_api_data(101),
+            ]
+        }
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        count = client.delete_events(monitor_id=1, limit=50)
+        assert count == 2
+        assert mock_api.delete.call_count == 2
+        mock_api.delete.assert_any_call("events/100.json")
+        mock_api.delete.assert_any_call("events/101.json")
+
+    @patch("pyzm.client.ZMAPI")
+    def test_delete_events_returns_zero_when_none_match(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {"events": []}
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        count = client.delete_events(before="2020-01-01")
+        assert count == 0
+        mock_api.delete.assert_not_called()
+
+
+# ===================================================================
+# TestZMClient - System Health
+# ===================================================================
+
+class TestZMClientSystemHealth:
+    """Tests for is_running, system_load, disk_usage, timezone."""
+
+    @patch("pyzm.client.ZMAPI")
+    def test_is_running_true(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {"result": 1}
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        assert client.is_running() is True
+        mock_api.get.assert_called_with("host/daemonCheck.json")
+
+    @patch("pyzm.client.ZMAPI")
+    def test_is_running_false(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {"result": 0}
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        assert client.is_running() is False
+
+    @patch("pyzm.client.ZMAPI")
+    def test_is_running_none_response(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = None
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        assert client.is_running() is False
+
+    @patch("pyzm.client.ZMAPI")
+    def test_system_load(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {"load": [0.5, 1.2, 0.8]}
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        load = client.system_load()
+        assert load == {"1min": 0.5, "5min": 1.2, "15min": 0.8}
+        mock_api.get.assert_called_with("host/getLoad.json")
+
+    @patch("pyzm.client.ZMAPI")
+    def test_system_load_none_response(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = None
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        assert client.system_load() == {}
+
+    @patch("pyzm.client.ZMAPI")
+    def test_disk_usage(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {"usage": {"/": 45.2}}
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        result = client.disk_usage()
+        assert result == {"usage": {"/": 45.2}}
+        mock_api.get.assert_called_with("host/getDiskPercent.json")
+
+    @patch("pyzm.client.ZMAPI")
+    def test_disk_usage_none_response(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = None
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        assert client.disk_usage() == {}
+
+    @patch("pyzm.client.ZMAPI")
+    def test_timezone_tz_key(self, mock_zmapi_cls):
+        """ZM 1.38+ uses 'tz' key."""
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {"tz": "America/New_York"}
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        assert client.timezone() == "America/New_York"
+        mock_api.get.assert_called_with("host/getTimeZone.json")
+
+    @patch("pyzm.client.ZMAPI")
+    def test_timezone_legacy_key(self, mock_zmapi_cls):
+        """Older ZM versions use 'timezone' key."""
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {"timezone": "US/Eastern"}
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        assert client.timezone() == "US/Eastern"
+
+    @patch("pyzm.client.ZMAPI")
+    def test_timezone_none_response(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = None
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        assert client.timezone() == ""
+
+
+# ===================================================================
+# TestZMClient - Daemon Status
+# ===================================================================
+
+class TestZMClientDaemonStatus:
+    """Tests for daemon_status."""
+
+    @patch("pyzm.client.ZMAPI")
+    def test_daemon_status(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {"status": True}
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        result = client.daemon_status(3)
+        assert result == {"status": True}
+        mock_api.get.assert_called_with(
+            "monitors/daemonStatus/id:3/daemon:zmc.json"
+        )
+
+    @patch("pyzm.client.ZMAPI")
+    def test_daemon_status_none_response(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = None
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        assert client.daemon_status(3) == {}
+
+
+# ===================================================================
+# TestZMClient - Configs
+# ===================================================================
+
+class TestZMClientConfigs:
+    """Tests for configs, config, set_config."""
+
+    @patch("pyzm.client.ZMAPI")
+    def test_configs_list(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {
+            "configs": [
+                {"Config": {"Id": "1", "Name": "ZM_LANG_DEFAULT", "Value": "en_us"}},
+                {"Config": {"Id": "2", "Name": "ZM_OPT_USE_AUTH", "Value": "1"}},
+            ]
+        }
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        cfgs = client.configs()
+        assert len(cfgs) == 2
+        assert cfgs[0]["Name"] == "ZM_LANG_DEFAULT"
+        assert cfgs[1]["Name"] == "ZM_OPT_USE_AUTH"
+        mock_api.get.assert_called_with("configs.json")
+
+    @patch("pyzm.client.ZMAPI")
+    def test_configs_empty(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {"configs": []}
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        assert client.configs() == []
+
+    @patch("pyzm.client.ZMAPI")
+    def test_config_by_name_wrapped(self, mock_zmapi_cls):
+        """Older ZM returns Config wrapper with Name/Id."""
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {
+            "config": {"Config": {"Id": "5", "Name": "ZM_TIMEZONE", "Value": "US/Eastern"}}
+        }
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        cfg = client.config("ZM_TIMEZONE")
+        assert cfg["Name"] == "ZM_TIMEZONE"
+        assert cfg["Value"] == "US/Eastern"
+        mock_api.get.assert_called_with("configs/viewByName/ZM_TIMEZONE.json")
+
+    @patch("pyzm.client.ZMAPI")
+    def test_config_by_name_flat(self, mock_zmapi_cls):
+        """ZM 1.38+ returns flat config without Name key."""
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {
+            "config": {"Value": "en_gb"}
+        }
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        cfg = client.config("ZM_LANG_DEFAULT")
+        assert cfg["Name"] == "ZM_LANG_DEFAULT"  # injected by setdefault
+        assert cfg["Value"] == "en_gb"
+
+    @patch("pyzm.client.ZMAPI")
+    def test_config_not_found_raises(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {}
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        with pytest.raises(ValueError, match="not found"):
+            client.config("ZM_NONEXISTENT")
+
+    @patch("pyzm.client.ZMAPI")
+    def test_set_config(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        # First call: config() to get the Id
+        mock_api.get.return_value = {
+            "config": {"Config": {"Id": "10", "Name": "ZM_TIMEZONE", "Value": "US/Eastern"}}
+        }
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        client.set_config("ZM_TIMEZONE", "US/Pacific")
+        mock_api.put.assert_called_once_with(
+            "configs/10.json",
+            data={"Config[Value]": "US/Pacific"},
+        )
+
+    @patch("pyzm.client.ZMAPI")
+    def test_set_config_no_id_raises(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        # Config exists but has no Id field
+        mock_api.get.return_value = {
+            "config": {"Config": {"Name": "ZM_BROKEN"}}
+        }
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        with pytest.raises(ValueError, match="not found or has no Id"):
+            client.set_config("ZM_BROKEN", "value")
+
+
+# ===================================================================
+# TestZMClient - States listing
+# ===================================================================
+
+class TestZMClientStates:
+    """Tests for states()."""
+
+    @patch("pyzm.client.ZMAPI")
+    def test_states_list(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {
+            "states": [
+                {"State": {"Id": "1", "Name": "default", "Definition": ""}},
+                {"State": {"Id": "2", "Name": "home", "Definition": "1:Modect"}},
+            ]
+        }
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        result = client.states()
+        assert len(result) == 2
+        assert result[0]["Name"] == "default"
+        assert result[1]["Name"] == "home"
+        mock_api.get.assert_called_with("states.json")
+
+    @patch("pyzm.client.ZMAPI")
+    def test_states_empty(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {"states": []}
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        assert client.states() == []
+
+    @patch("pyzm.client.ZMAPI")
+    def test_states_none_response(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = None
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        assert client.states() == []
+
+
+# ===================================================================
+# TestZMClient - Servers & Storage
+# ===================================================================
+
+class TestZMClientServersStorage:
+    """Tests for servers() and storage()."""
+
+    @patch("pyzm.client.ZMAPI")
+    def test_servers_list(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {
+            "servers": [
+                {"Server": {"Id": "1", "Name": "zm-primary", "Hostname": "zm1.local"}},
+            ]
+        }
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        result = client.servers()
+        assert len(result) == 1
+        assert result[0]["Name"] == "zm-primary"
+        mock_api.get.assert_called_with("servers.json")
+
+    @patch("pyzm.client.ZMAPI")
+    def test_servers_empty(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {"servers": []}
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        assert client.servers() == []
+
+    @patch("pyzm.client.ZMAPI")
+    def test_storage_list(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {
+            "storage": [
+                {"Storage": {"Id": "1", "Name": "Default", "Path": "/var/cache/zoneminder/events"}},
+            ]
+        }
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        result = client.storage()
+        assert len(result) == 1
+        assert result[0]["Name"] == "Default"
+        mock_api.get.assert_called_with("storage.json")
+
+    @patch("pyzm.client.ZMAPI")
+    def test_storage_empty(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {"storage": []}
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(url="https://zm.example.com/zm/api")
+
+        assert client.storage() == []

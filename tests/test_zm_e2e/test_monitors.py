@@ -48,3 +48,13 @@ class TestMonitors:
         reloaded = zm_client.monitors(force_reload=True)
         assert cached is not reloaded
         assert len(reloaded) == len(cached)
+
+    def test_alarm_status(self, zm_client, any_monitor):
+        """alarm_status() should return a dict without error."""
+        result = zm_client.alarm_status(any_monitor.id)
+        assert isinstance(result, dict)
+
+    def test_daemon_status(self, zm_client, any_monitor):
+        """daemon_status() should return a dict without error."""
+        result = zm_client.daemon_status(any_monitor.id)
+        assert isinstance(result, dict)

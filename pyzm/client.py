@@ -384,8 +384,149 @@ class ZMClient:
         return frames, image_dims
 
     # ------------------------------------------------------------------
+    # Monitor alarm (arm / disarm)
+    # ------------------------------------------------------------------
+
+    def arm(self, monitor_id: int) -> dict:
+        """Trigger alarm ON for a monitor."""
+        return self._api.get(f"monitors/alarm/id:{monitor_id}/command:on.json")
+
+    def disarm(self, monitor_id: int) -> dict:
+        """Cancel alarm for a monitor."""
+        return self._api.get(f"monitors/alarm/id:{monitor_id}/command:off.json")
+
+    def alarm_status(self, monitor_id: int) -> dict:
+        """Get alarm status for a monitor."""
+        return self._api.get(f"monitors/alarm/id:{monitor_id}/command:status.json")
+
+    # ------------------------------------------------------------------
+    # Monitor update
+    # ------------------------------------------------------------------
+
+    def update_monitor(self, monitor_id: int, **kwargs) -> None:
+        """Update monitor fields (function, enabled, name, etc.)."""
+        data = {f"Monitor[{k}]": v for k, v in kwargs.items()}
+        self._api.put(f"monitors/{monitor_id}.json", data=data)
+        self._monitors = None  # invalidate cache
+
+    # ------------------------------------------------------------------
+    # Monitor daemon status
+    # ------------------------------------------------------------------
+
+    def daemon_status(self, monitor_id: int) -> dict:
+        """Get daemon status for a monitor's capture daemon (zmc)."""
+        return self._api.get(
+            f"monitors/daemonStatus/id:{monitor_id}/daemon:zmc.json"
+        ) or {}
+
+    # ------------------------------------------------------------------
+    # Event deletion
+    # ------------------------------------------------------------------
+
+    def delete_event(self, event_id: int) -> None:
+        """Delete a single event."""
+        self._api.delete(f"events/{event_id}.json")
+
+    def delete_events(
+        self,
+        *,
+        monitor_id: int | None = None,
+        before: str | None = None,
+        min_alarm_frames: int | None = None,
+        limit: int = 100,
+    ) -> int:
+        """Query events matching filters and delete each one. Returns count deleted."""
+        matched = self.events(
+            monitor_id=monitor_id,
+            until=before,
+            min_alarm_frames=min_alarm_frames,
+            limit=limit,
+        )
+        for ev in matched:
+            self._api.delete(f"events/{ev.id}.json")
+        return len(matched)
+
+    # ------------------------------------------------------------------
+    # System health
+    # ------------------------------------------------------------------
+
+    def is_running(self) -> bool:
+        """Check if the ZM daemon is running."""
+        data = self._api.get("host/daemonCheck.json")
+        return bool(data and data.get("result") == 1)
+
+    def system_load(self) -> dict[str, float]:
+        """Get system load averages."""
+        data = self._api.get("host/getLoad.json")
+        load = data.get("load", []) if data else []
+        keys = ("1min", "5min", "15min")
+        return {k: float(load[i]) for i, k in enumerate(keys) if i < len(load)}
+
+    def disk_usage(self) -> dict:
+        """Get disk usage info."""
+        return self._api.get("host/getDiskPercent.json") or {}
+
+    def timezone(self) -> str:
+        """Get server timezone."""
+        data = self._api.get("host/getTimeZone.json")
+        if not data:
+            return ""
+        # ZM 1.38+ uses "tz", older versions may use "timezone"
+        return data.get("tz") or data.get("timezone") or ""
+
+    # ------------------------------------------------------------------
+    # Configuration management
+    # ------------------------------------------------------------------
+
+    def configs(self) -> list[dict]:
+        """List all ZM configuration parameters."""
+        data = self._api.get("configs.json")
+        raw = data.get("configs", []) if data else []
+        return [c.get("Config", c) for c in raw]
+
+    def config(self, name: str) -> dict:
+        """Get a single config parameter by name.
+
+        Returns the unwrapped Config dict. The ``viewByName`` endpoint
+        may return either ``{"config": {"Config": {...}}}`` (older ZM)
+        or ``{"config": {"Value": ...}}`` (newer ZM 1.38+). We normalise
+        both by injecting *name* as ``Name`` when the key is missing.
+        """
+        data = self._api.get(f"configs/viewByName/{name}.json")
+        if data and data.get("config"):
+            cfg = data["config"].get("Config", data["config"])
+            cfg.setdefault("Name", name)
+            return cfg
+        raise ValueError(f"Config '{name}' not found")
+
+    def set_config(self, name: str, value: str) -> None:
+        """Set a config parameter value. System configs are read-only.
+
+        Looks up the config Id from the full configs list since the
+        ``viewByName`` endpoint may not return it on newer ZM versions.
+        """
+        # Try viewByName first (has Id on some versions)
+        cfg = self.config(name)
+        config_id = cfg.get("Id")
+        # Fallback: scan full configs list
+        if not config_id:
+            for c in self.configs():
+                if c.get("Name") == name:
+                    config_id = c.get("Id")
+                    break
+        if not config_id:
+            raise ValueError(f"Config '{name}' not found or has no Id")
+        self._api.put(f"configs/{config_id}.json", data={"Config[Value]": value})
+
+    # ------------------------------------------------------------------
     # State management
     # ------------------------------------------------------------------
+
+    def states(self) -> list[dict]:
+        """List all available ZM states."""
+        data = self._api.get("states.json")
+        raw = data.get("states", []) if data else []
+        return [s.get("State", s) for s in raw]
 
     def set_state(self, state: str) -> Any:
         """Set ZM to a named state (e.g. 'start', 'stop', 'restart')."""
@@ -399,6 +540,22 @@ class ZMClient:
 
     def restart(self) -> Any:
         return self.set_state("restart")
+
+    # ------------------------------------------------------------------
+    # Servers & Storage
+    # ------------------------------------------------------------------
+
+    def servers(self) -> list[dict]:
+        """List all ZM servers (multi-server setups)."""
+        data = self._api.get("servers.json")
+        raw = data.get("servers", []) if data else []
+        return [s.get("Server", s) for s in raw]
+
+    def storage(self) -> list[dict]:
+        """List all storage areas with disk usage."""
+        data = self._api.get("storage.json")
+        raw = data.get("storage", []) if data else []
+        return [s.get("Storage", s) for s in raw]
 
 
 # ---------------------------------------------------------------------------
