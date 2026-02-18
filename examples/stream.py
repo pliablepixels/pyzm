@@ -7,9 +7,10 @@ Usage:
 
 import sys
 
+import yaml
+
 from pyzm import __version__ as pyzm_version
 from pyzm import Detector, ZMClient, StreamConfig
-import pyzm.helpers.utils as utils
 
 print(f"Using pyzm version: {pyzm_version}")
 
@@ -21,12 +22,15 @@ else:
     mid = sys.argv[2] if len(sys.argv) > 2 else input("Enter monitor ID: ")
 
 # Read connection details from secrets
-conf = utils.read_config("/etc/zm/secrets.yml")
+with open("/etc/zm/secrets.yml") as f:
+    conf = yaml.safe_load(f) or {}
+secrets = conf.get("secrets", {})
+
 zm = ZMClient(
-    url=utils.get(key="ZM_API_PORTAL", section="secrets", conf=conf),
-    portal_url=utils.get(key="ZM_PORTAL", section="secrets", conf=conf),
-    user=utils.get(key="ZM_USER", section="secrets", conf=conf),
-    password=utils.get(key="ZM_PASSWORD", section="secrets", conf=conf),
+    apiurl=secrets.get("ZM_API_PORTAL"),
+    portal_url=secrets.get("ZM_PORTAL"),
+    user=secrets.get("ZM_USER"),
+    password=secrets.get("ZM_PASSWORD"),
 )
 
 # ML options (same dict format as objectconfig.yml ml_sequence)
@@ -85,7 +89,7 @@ ml_options = {
         "sequence": [
             {
                 "alpr_service": "plate_recognizer",
-                "alpr_key": utils.get(key="PLATEREC_ALPR_KEY", section="secrets", conf=conf),
+                "alpr_key": secrets.get("PLATEREC_ALPR_KEY"),
                 "platerec_min_dscore": "0.1",
                 "platerec_min_score": "0.2",
             },

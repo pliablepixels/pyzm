@@ -1,8 +1,12 @@
+import logging
+import time as _time
+
 import cv2
 import numpy as np
-import pyzm.helpers.globals as g
+
 from pyzm.ml.yolo import YoloBase, cv2_version
-from pyzm.helpers.utils import Timer
+
+logger = logging.getLogger("pyzm")
 
 
 class YoloDarknet(YoloBase):
@@ -13,21 +17,21 @@ class YoloDarknet(YoloBase):
         self.is_get_unconnected_api_list = False
 
     def load_model(self):
-        g.logger.Debug(1, '|--------- Loading "{}" model from disk -------------|'.format(self.name))
-        t = Timer()
+        logger.debug('|--------- Loading "{}" model from disk -------------|'.format(self.name))
+        _t0 = _time.perf_counter()
         self.net = cv2.dnn.readNet(
             self.options.get('object_weights'),
             self.options.get('object_config'),
         )
-        diff_time = t.stop_and_get_ms()
+        diff_time = f"{(_time.perf_counter() - _t0) * 1000:.2f} ms"
 
         cv2_ver = cv2_version()
         if cv2_ver >= (4, 5, 4):
-            g.logger.Debug(1, '{}: OpenCV >= 4.5.4, fixing getUnconnectedOutLayers() API'.format(self.name))
+            logger.debug('{}: OpenCV >= 4.5.4, fixing getUnconnectedOutLayers() API'.format(self.name))
             self.is_get_unconnected_api_list = True
 
-        g.logger.Debug(
-            1, 'perf: processor:{} {} initialization (loading {} model from disk) took: {}'
+        logger.debug(
+            'perf: processor:{} {} initialization (loading {} model from disk) took: {}'
             .format(self.processor, self.name, self.options.get('object_weights'), diff_time))
 
         self._setup_gpu(cv2_ver)

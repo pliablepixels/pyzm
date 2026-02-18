@@ -12,7 +12,7 @@ Connecting to ZoneMinder
    from pyzm import ZMClient
 
    zm = ZMClient(
-       url="https://zm.example.com/zm/api",
+       apiurl="https://zm.example.com/zm/api",
        user="admin",
        password="secret",
        # verify_ssl=False,  # for self-signed certs
@@ -20,8 +20,7 @@ Connecting to ZoneMinder
 
    print(f"ZM {zm.zm_version}, API {zm.api_version}")
 
-The ``url`` can be the API URL or the portal URL -- ``/api`` is appended
-automatically if missing.
+``apiurl`` must be the full ZM API URL (ending in ``/api``).
 
 Listing monitors
 ~~~~~~~~~~~~~~~~~
@@ -80,6 +79,78 @@ Getting zones
 
 Zones are used by the ML detector for region-based filtering.
 
+Monitor control
+~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   # Alarm control
+   zm.arm(1)                           # trigger alarm on monitor 1
+   zm.disarm(1)                        # cancel alarm
+   status = zm.alarm_status(1)         # check alarm state
+
+   # Update monitor settings
+   zm.update_monitor(1, Function="Modect", Enabled="1")
+
+   # Daemon status
+   zm.daemon_status(1)                 # capture daemon (zmc) status
+
+Event management
+~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   # Delete a single event
+   zm.delete_event(12345)
+
+   # Bulk delete events matching filters
+   count = zm.delete_events(monitor_id=1, before="7 days ago", limit=500)
+   print(f"Deleted {count} events")
+
+System health
+~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   zm.is_running()          # True if ZM daemon is running
+   zm.system_load()         # {"1min": 0.5, "5min": 0.3, "15min": 0.2}
+   zm.disk_usage()          # disk percent info from ZM
+   zm.timezone()            # e.g. "America/New_York"
+
+Configuration
+~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   # List all config parameters
+   all_configs = zm.configs()
+
+   # Get a single config by name
+   cfg = zm.config("ZM_LANG_DEFAULT")
+   print(cfg["Value"])
+
+   # Set a config value (system configs are read-only)
+   zm.set_config("ZM_LANG_DEFAULT", "en_us")
+
+States, servers, and storage
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   # List ZM states
+   for s in zm.states():
+       print(s["Name"])
+
+   # State control
+   zm.stop()                # stop ZM
+   zm.start()               # start ZM
+   zm.restart()             # restart ZM
+   zm.set_state("my_state") # switch to a named state
+
+   # Multi-server setups
+   zm.servers()             # list all ZM servers
+   zm.storage()             # list storage areas with disk usage
+
 
 Detecting objects in an image
 ------------------------------
@@ -131,7 +202,7 @@ Detecting on a ZoneMinder event
 
    from pyzm import ZMClient, Detector, StreamConfig
 
-   zm = ZMClient(url="https://zm.example.com/zm/api",
+   zm = ZMClient(apiurl="https://zm.example.com/zm/api",
                   user="admin", password="secret")
    detector = Detector(models=["yolo11s"])
 
@@ -194,11 +265,41 @@ and builds a fully typed ``DetectorConfig`` internally.
 Logging
 --------
 
+All pyzm internals log to the ``"pyzm"`` stdlib logger.  How you
+configure it depends on whether you are using ZoneMinder or not.
+
+Standalone (ML only, no ZoneMinder)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you only use pyzm for ML detection (no ZM), configure the ``"pyzm"``
+logger with stdlib ``logging``:
+
+.. code-block:: python
+
+   import logging
+
+   logging.basicConfig(level=logging.DEBUG)          # quick & simple
+
+   # — or — configure just the pyzm logger:
+   pyzm_logger = logging.getLogger("pyzm")
+   pyzm_logger.setLevel(logging.DEBUG)
+   pyzm_logger.addHandler(logging.StreamHandler())   # print to console
+
+   from pyzm import Detector
+   detector = Detector(models=["yolo11s"])
+   result = detector.detect("/path/to/image.jpg")    # logs appear on console
+
+With ZoneMinder
+~~~~~~~~~~~~~~~~
+
+On a ZoneMinder host, ``setup_zm_logging()`` reads ``zm.conf``, the DB
+``Config`` table, and environment variables, then writes to ZM's log file,
+database, and syslog using the same format as Perl's ``Logger.pm``:
+
 .. code-block:: python
 
    from pyzm.log import setup_zm_logging
 
-   # ZM-native logging (reads zm.conf, DB Config table, env vars)
    adapter = setup_zm_logging(name="myapp")
    adapter.Info("Hello from pyzm")
    adapter.Debug(1, "Verbose detail")
@@ -210,6 +311,7 @@ Logging
        "log_level_debug": 5,
    })
 
-``setup_zm_logging()`` returns a :class:`ZMLogAdapter` that writes to ZM's
-log file, database, and syslog using the same format as ZM's Perl Logger.pm.
-All pyzm library internals automatically share the same log handlers.
+``setup_zm_logging()`` returns a :class:`ZMLogAdapter` that provides
+``Debug``, ``Info``, ``Warning``, ``Error``, and ``Fatal`` methods
+matching the legacy pyzm API.  All pyzm library internals automatically
+share the same log handlers via the ``"pyzm"`` logger.

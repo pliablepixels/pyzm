@@ -1,4 +1,4 @@
-Example Program(s)
+Example Programs
 ------------------
 
 pyzm v2 quick-start
@@ -20,7 +20,3 @@ Audio detection (BirdNET)
 Remote detection via pyzm.serve
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .. literalinclude:: ../examples/remote.py
-
-Various legacy examples (API, ES, shared memory)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-.. literalinclude:: ../examples/example.py

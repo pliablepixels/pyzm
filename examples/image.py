@@ -7,9 +7,10 @@ Usage:
 
 import sys
 
+import yaml
+
 from pyzm import __version__ as pyzm_version
 from pyzm import Detector
-import pyzm.helpers.utils as utils
 
 print(f"Using pyzm version: {pyzm_version}")
 
@@ -18,7 +19,9 @@ if len(sys.argv) < 2:
 else:
     stream = sys.argv[1]
 
-conf = utils.read_config("/etc/zm/secrets.yml")
+with open("/etc/zm/secrets.yml") as f:
+    conf = yaml.safe_load(f) or {}
+secrets = conf.get("secrets", {})
 
 # ML options (same dict format as objectconfig.yml ml_sequence)
 ml_options = {
@@ -76,7 +79,7 @@ ml_options = {
         "sequence": [
             {
                 "alpr_service": "plate_recognizer",
-                "alpr_key": utils.get(key="PLATEREC_ALPR_KEY", section="secrets", conf=conf),
+                "alpr_key": secrets.get("PLATEREC_ALPR_KEY"),
                 "platerec_min_dscore": "0.1",
                 "platerec_min_score": "0.2",
             },
