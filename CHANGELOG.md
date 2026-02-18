@@ -3,10 +3,75 @@
 All notable changes to this project will be documented in this file.
 
 
+## [2.1.0] - 2026-02-18
+
+### Bug Fixes
+
+- download model weights to project_dir, not CWD ([19aef17](https://github.com/pliablepixels/pyzm/commit/19aef179420267a30a26449a90b08f89015552d0))
+- use single file uploader to avoid duplicate uploads ([ee77049](https://github.com/pliablepixels/pyzm/commit/ee770493ad5f4123c197a825f677243d7fca2167))
+- clarify why images are needed for regrouping ([4247c55](https://github.com/pliablepixels/pyzm/commit/4247c559f1761b8036da2776266ab767699612c4))
+- explain auto-detect purpose and hide when not useful ([be796f7](https://github.com/pliablepixels/pyzm/commit/be796f7b2bd895c9be40472ac52cb587a26efd57))
+- fix project load rerun loop and improve layout alignment ([a406802](https://github.com/pliablepixels/pyzm/commit/a406802127c6b107ea191184c4d82bbe1946a38a))
+- use media file manager for canvas background images ([8e9b7f2](https://github.com/pliablepixels/pyzm/commit/8e9b7f20f9063c0cd76306ff0dbf1c7e2408c50d))
+- shim image_to_url for streamlit-drawable-canvas compat ([e360eb2](https://github.com/pliablepixels/pyzm/commit/e360eb2d7c8d5475b5f12f277ea1efa0dd8e712b))
+- fix upload rerun loop and show next steps after upload ([7e6a8a0](https://github.com/pliablepixels/pyzm/commit/7e6a8a00387f896c59ecb4f5287da8a344c3707e))
+- use native Streamlit dark theme instead of injected CSS ([ce1659f](https://github.com/pliablepixels/pyzm/commit/ce1659fef77ec73ad8afffe6cc0862e336b3bf50))
+- scan individual model files, auto-populate classes from ONNX ([900399d](https://github.com/pliablepixels/pyzm/commit/900399d2a30a3f5233de77229759cf1558088c94))
+- use single model for auto-detect, redesign UI flow ([de5e9b8](https://github.com/pliablepixels/pyzm/commit/de5e9b834412c00770ad7f747d3fa6663974f338))
+
+### Documentation
+
+- document all new ZMClient API methods in quickstart ([78e2b7e](https://github.com/pliablepixels/pyzm/commit/78e2b7e617475dead1f52e1801058b50dff65542))
+- add standalone logging guide, fix stale url= references ([82450d9](https://github.com/pliablepixels/pyzm/commit/82450d97a4f5c3f1343f080fa3742b2bed492eb6))
+- add BirdNET to detection guide and feature list ([7186b58](https://github.com/pliablepixels/pyzm/commit/7186b5831669988291e1905264c7615320666208))
+- update birdnet and optional deps for venv install paths ([fa81958](https://github.com/pliablepixels/pyzm/commit/fa81958fab5981ee8ca2d0cec1402e4522b9e213))
+- update RTD logo to match new logo ([cd64bdb](https://github.com/pliablepixels/pyzm/commit/cd64bdb3fd05401bd545986a7b43e3b4bcd1da17))
+- add Coral EdgeTPU deprecation note with pycoral[#149](https://github.com/pliablepixels/pyzm/issues/149) link ([5022a73](https://github.com/pliablepixels/pyzm/commit/5022a7319227124d7f8b5948959524981f5b68e4))
+- add training guide and update install instructions for extras ([f820cee](https://github.com/pliablepixels/pyzm/commit/f820cee8bf14dbfdbd8423d24c1c9c89cd84e713))
+- link zmNg to ReadTheDocs instead of GitHub ([0ecced5](https://github.com/pliablepixels/pyzm/commit/0ecced54a289d54222da458fa89c4983982d20eb))
+
+### Features
+
+- add OOP resource methods on Monitor/Event and PTZ control ([f2ea43c](https://github.com/pliablepixels/pyzm/commit/f2ea43ca8f0ce58229b16431dd9d3bba826abb36))
+- add missing ZM API features to ZMClient ([5f88385](https://github.com/pliablepixels/pyzm/commit/5f883852bfa2889bb4a6619a30bd93e4afb842fc))
+- add Detector.detect_audio() and BirdNET examples ([ed77522](https://github.com/pliablepixels/pyzm/commit/ed775229b24eb708f8f207873f31062da603d6bb))
+- add BirdNET audio bird recognition backend ([14771da](https://github.com/pliablepixels/pyzm/commit/14771daaf9527acea2249f64eff87e53d0f1e256))
+- use shared venv instead of --break-system-packages ([05645cd](https://github.com/pliablepixels/pyzm/commit/05645cda7c60c441faae3da61c767a3003ead98f))
+- add headless CLI training pipeline ([d6df249](https://github.com/pliablepixels/pyzm/commit/d6df249bf51b512093b47af1a77e99823192da8f))
+- UI polish, MPS support, folder picker, and docs ([cf7b9a3](https://github.com/pliablepixels/pyzm/commit/cf7b9a39cd37b0017121b20537601cf29f7a9539))
+- grid review UI, recursive ONNX model scan, and local import ([ab54b78](https://github.com/pliablepixels/pyzm/commit/ab54b78bbab5afe88dfda6822e5dec8a52134847))
+- remove Upload phase, add date pickers, and UX improvements ([d32ddd0](https://github.com/pliablepixels/pyzm/commit/d32ddd0356d3d3e82a74b4d0f15e54e5e54b6859))
+- verification-based review workflow and UX improvements ([fb2e349](https://github.com/pliablepixels/pyzm/commit/fb2e349789700e2240fe180e750c35d7bfdc3ab1))
+- skip training for remap-only projects ([b2e5815](https://github.com/pliablepixels/pyzm/commit/b2e58155f28c1418cbbe8f702d18f438b5619adc))
+- labeled annotations, color-coded boxes, min 2 images ([808e304](https://github.com/pliablepixels/pyzm/commit/808e3047d1d0418e4bec69f7186e64cb4e5780a9))
+- add class grouping and dark UI theme ([8bac331](https://github.com/pliablepixels/pyzm/commit/8bac331dcb2b495d4515e13f2891181d7276826e))
+- add YOLO fine-tuning training module (pyzm[train]) ([b47fbab](https://github.com/pliablepixels/pyzm/commit/b47fbab08353c4d7d8111871e18ab7af0cc84e1e))
+
+### Miscellaneous
+
+- switch setup.py to find_packages(), clean up install docs ([4521063](https://github.com/pliablepixels/pyzm/commit/45210631ee7a01d4b3e25af6dceb90a1a00f2eed))
+- gitignore YOLO .pt weight files ([dc7ac09](https://github.com/pliablepixels/pyzm/commit/dc7ac09dd16a6a4140e7902414e0d957ff5eb0c9))
+- new logo ([764653f](https://github.com/pliablepixels/pyzm/commit/764653f708777fbf63a186a9d21aa2c1fb42f81e))
+- remove balloons animation from training complete ([84077f1](https://github.com/pliablepixels/pyzm/commit/84077f12bd6824ab55149fadb07787f3a8f2562c))
+- consolidate logo, add RTD logo, slim docs dependencies ([4062f09](https://github.com/pliablepixels/pyzm/commit/4062f09afa4190c16a61db5aecf62e350ac5c93f))
+- replace deprecated use_container_width with width ([a57e490](https://github.com/pliablepixels/pyzm/commit/a57e490ce1097b9ca8640d805e63762455fa5c32))
+
+### Refactoring
+
+- remove all pre-v2 legacy code ([3a2633e](https://github.com/pliablepixels/pyzm/commit/3a2633ede1863f6911eb69e54832d8a6bdac5f49))
+- rename ZMClient url= to apiurl=, remove auto-append ([f8acc72](https://github.com/pliablepixels/pyzm/commit/f8acc7210a5a39da34449f28835673ea8a1b5a6e))
+- adaptive upload+label flow based on class types ([24f2a1e](https://github.com/pliablepixels/pyzm/commit/24f2a1eed6758916d1185223ff18f38c7958b724))
+- merge auto-detect into label step, simplify flow ([c77e7e1](https://github.com/pliablepixels/pyzm/commit/c77e7e185164bbabf4286fad3b4509e07da34ef0))
+
+### revert
+
+- remove label_map remap-only shortcut ([8724836](https://github.com/pliablepixels/pyzm/commit/8724836eae2a393f3dacfeda36904858b7661f0f))
+
 ## [2.0.7] - 2026-02-15
 
 ### Documentation
 
+- update CHANGELOG for v2.0.7 ([1566872](https://github.com/pliablepixels/pyzm/commit/1566872faf73e50f7f5e93e43254ccdb7a1d4016))
 - update YOLO model references to match actual disk layout ([599097f](https://github.com/pliablepixels/pyzm/commit/599097fe5cd05e295cf9910efc1e11a66355aa8d))
 - fix incorrect defaults and YAML keys in detection/serve guides ([57710ce](https://github.com/pliablepixels/pyzm/commit/57710cefe29c78ec6ad4da82bd7ed0dae6cff6d9))
 
