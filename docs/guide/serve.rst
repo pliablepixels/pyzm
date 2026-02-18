@@ -251,9 +251,11 @@ Server setup
 Installation
 ~~~~~~~~~~~~~
 
+The ``[serve]`` extra automatically includes all ML dependencies.
+
 .. code-block:: bash
 
-   pip install pyzm[serve]
+   pip install "pyzm[serve]"
 
 
 CLI options

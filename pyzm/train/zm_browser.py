@@ -525,7 +525,8 @@ def _zm_frame_grid(zm, event_id: int, ds: YOLODataset, store: VerificationStore,
     all_key = f"zm_all_frames_{event_id}"
     if all_key not in st.session_state:
         try:
-            st.session_state[all_key] = zm.event_frames(event_id)
+            ev = zm.event(event_id)
+            st.session_state[all_key] = ev.get_frames()
         except Exception as exc:
             st.error(f"Failed to fetch frames: {exc}")
             return
@@ -640,7 +641,8 @@ def _import_frames(
         resize=None,
     )
     try:
-        frames, _dims = zm.get_event_frames(event_id, stream_config=sc)
+        ev = zm.event(event_id)
+        frames, _dims = ev.extract_frames(stream_config=sc)
     except Exception as exc:
         st.error(f"Failed to fetch frame images: {exc}")
         return

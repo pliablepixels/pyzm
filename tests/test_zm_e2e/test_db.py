@@ -19,18 +19,18 @@ skip_no_db = pytest.mark.skipif(not _db_ok, reason=_db_reason or "ZM database no
 
 @skip_no_db
 class TestEventPath:
-    def test_event_path_returns_string(self, zm_client, any_event):
-        """event_path() should return a filesystem path string."""
-        path = zm_client.event_path(any_event.id)
-        assert path is not None, "event_path returned None"
+    def test_event_path_returns_string(self, any_event):
+        """path() should return a filesystem path string."""
+        path = any_event.path()
+        assert path is not None, "path() returned None"
         assert isinstance(path, str)
         assert len(path) > 0
 
-    def test_event_path_contains_monitor_id(self, zm_client, any_event):
+    def test_event_path_contains_monitor_id(self, any_event):
         """The path should include the monitor ID."""
-        path = zm_client.event_path(any_event.id)
+        path = any_event.path()
         if path is None:
-            pytest.skip("event_path returned None")
+            pytest.skip("path() returned None")
         assert str(any_event.monitor_id) in path
 
 
@@ -59,11 +59,11 @@ class TestTagEvent:
         finally:
             conn.close()
 
-    def test_tag_event_creates_tag(self, zm_client, any_event):
-        """tag_event() should create tags and link them to the event."""
+    def test_tag_event_creates_tag(self, any_event):
+        """tag() should create tags and link them to the event."""
         labels = ["pyzm_e2e_test_label"]
         try:
-            zm_client.tag_event(any_event.id, labels)
+            any_event.tag(labels)
             conn = get_zm_db()
             assert conn is not None
             cur = conn.cursor(dictionary=True)
@@ -82,11 +82,11 @@ class TestTagEvent:
         finally:
             self._cleanup_tags(any_event.id, labels)
 
-    def test_tag_event_deduplicates(self, zm_client, any_event):
+    def test_tag_event_deduplicates(self, any_event):
         """Passing duplicate labels should not create duplicate tags."""
         labels = ["pyzm_e2e_dedup", "pyzm_e2e_dedup"]
         try:
-            zm_client.tag_event(any_event.id, labels)
+            any_event.tag(labels)
             conn = get_zm_db()
             assert conn is not None
             cur = conn.cursor(dictionary=True)
@@ -98,6 +98,6 @@ class TestTagEvent:
         finally:
             self._cleanup_tags(any_event.id, ["pyzm_e2e_dedup"])
 
-    def test_tag_event_empty_list_is_noop(self, zm_client, any_event):
+    def test_tag_event_empty_list_is_noop(self, any_event):
         """Passing an empty list should not raise."""
-        zm_client.tag_event(any_event.id, [])
+        any_event.tag([])

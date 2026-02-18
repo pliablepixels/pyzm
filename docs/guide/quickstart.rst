@@ -12,7 +12,7 @@ Connecting to ZoneMinder
    from pyzm import ZMClient
 
    zm = ZMClient(
-       apiurl="https://zm.example.com/zm/api",
+       api_url="https://zm.example.com/zm/api",
        user="admin",
        password="secret",
        # verify_ssl=False,  # for self-signed certs
@@ -20,7 +20,7 @@ Connecting to ZoneMinder
 
    print(f"ZM {zm.zm_version}, API {zm.api_version}")
 
-``apiurl`` must be the full ZM API URL (ending in ``/api``).
+``api_url`` must be the full ZM API URL (ending in ``/api``).
 
 Listing monitors
 ~~~~~~~~~~~~~~~~~
@@ -57,7 +57,8 @@ Per-frame metadata
 
 .. code-block:: python
 
-   frames = zm.event_frames(event_id=12345)
+   ev = zm.event(12345)
+   frames = ev.get_frames()
    for f in frames:
        print(f"Frame {f.frame_id}: type={f.type} score={f.score} delta={f.delta:.2f}s")
 
@@ -65,7 +66,7 @@ Per-frame metadata
    best = max(frames, key=lambda f: f.score)
    print(f"Best frame: {best.frame_id} (score={best.score})")
 
-``event_frames()`` returns ``list[Frame]`` with per-frame ``Score``,
+``get_frames()`` returns ``list[Frame]`` with per-frame ``Score``,
 ``Type`` (Normal/Alarm/Bulk), and ``Delta`` (seconds since event start).
 
 Getting zones
@@ -73,7 +74,8 @@ Getting zones
 
 .. code-block:: python
 
-   zones = zm.monitor_zones(monitor_id=1)
+   m = zm.monitor(1)
+   zones = m.get_zones()
    for z in zones:
        print(f"{z.name}: {len(z.points)} points, pattern={z.pattern}")
 
@@ -84,16 +86,69 @@ Monitor control
 
 .. code-block:: python
 
+   m = zm.monitor(1)
+
    # Alarm control
-   zm.arm(1)                           # trigger alarm on monitor 1
-   zm.disarm(1)                        # cancel alarm
-   status = zm.alarm_status(1)         # check alarm state
+   m.arm()                              # trigger alarm
+   m.disarm()                           # cancel alarm
+   status = m.alarm_status()            # check alarm state
 
    # Update monitor settings
-   zm.update_monitor(1, Function="Modect", Enabled="1")
+   m.update(Function="Modect", Enabled="1")
 
    # Daemon status
-   zm.daemon_status(1)                 # capture daemon (zmc) status
+   m.daemon_status()                    # capture daemon (zmc) status
+
+Streaming & snapshot URLs
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   m = zm.monitor(1)
+
+   # MJPEG stream
+   url = m.streaming_url()                           # mode=jpeg
+   url = m.streaming_url(maxfps=5, scale=50)         # with extra params
+
+   # Single-frame snapshot
+   url = m.snapshot_url()                            # mode=single
+   url = m.snapshot_url(scale=50)
+
+Both URLs are built from the portal URL and ``ZM_PATH_ZMS`` config, with
+automatic path deduplication (e.g. ``/zm`` won't be doubled).
+
+PTZ control
+~~~~~~~~~~~~
+
+.. code-block:: python
+
+   m = zm.monitor("FrontDoor (Video)")
+
+   if m.controllable:
+       # Query what the camera can do
+       caps = m.ptz_capabilities()
+       print(caps.can_move_con, caps.can_zoom, caps.has_presets)
+
+       # Simple commands — defaults to continuous mode
+       m.ptz("up")
+       m.ptz("stop")
+       m.ptz("zoom_in")
+
+       # Move for 2 seconds then auto-stop
+       m.ptz("right", stop_after=2.0)
+
+       # Relative or absolute mode
+       m.ptz("left", mode="rel")
+
+       # Presets
+       m.ptz("home")
+       m.ptz("preset", preset=3)
+
+Supported commands: ``up``, ``down``, ``left``, ``right``, ``up_left``,
+``up_right``, ``down_left``, ``down_right``, ``zoom_in``, ``zoom_out``,
+``stop``, ``home``, ``preset``.
+
+Modes: ``con`` (continuous, default), ``rel`` (relative), ``abs`` (absolute).
 
 Event management
 ~~~~~~~~~~~~~~~~~
@@ -101,11 +156,20 @@ Event management
 .. code-block:: python
 
    # Delete a single event
-   zm.delete_event(12345)
+   ev = zm.event(12345)
+   ev.delete()
 
    # Bulk delete events matching filters
    count = zm.delete_events(monitor_id=1, before="7 days ago", limit=500)
    print(f"Deleted {count} events")
+
+   # OOP: query events scoped to a monitor
+   m = zm.monitor(1)
+   recent = m.events(until="6 hours ago", limit=10)
+
+   # OOP: bulk-delete old events for a monitor
+   count = m.delete_events(before="1 week ago", limit=500)
+   print(f"Deleted {count} events from {m.name}")
 
 System health
 ~~~~~~~~~~~~~~
@@ -155,6 +219,10 @@ States, servers, and storage
 Detecting objects in an image
 ------------------------------
 
+.. note::
+
+   ML detection requires the ``[ml]`` extra: ``pip install "pyzm[ml]"``
+
 .. code-block:: python
 
    from pyzm import Detector
@@ -202,11 +270,12 @@ Detecting on a ZoneMinder event
 
    from pyzm import ZMClient, Detector, StreamConfig
 
-   zm = ZMClient(apiurl="https://zm.example.com/zm/api",
+   zm = ZMClient(api_url="https://zm.example.com/zm/api",
                   user="admin", password="secret")
    detector = Detector(models=["yolo11s"])
 
-   zones = zm.monitor_zones(1)
+   m = zm.monitor(1)
+   zones = m.get_zones()
 
    result = detector.detect_event(
        zm,
@@ -220,7 +289,8 @@ Detecting on a ZoneMinder event
 
    if result.matched:
        print(result.summary)
-       zm.update_event_notes(12345, result.summary)
+       ev = zm.event(12345)
+       ev.update_notes(result.summary)
 
 ``detect_event()`` extracts frames from the event (via the ZM API or
 local filesystem), runs each through the detection pipeline, and returns

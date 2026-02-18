@@ -467,7 +467,7 @@ class Detector:
 
     def detect_event(
         self,
-        zm_client: object,
+        zm_client: "ZMClient",
         event_id: int,
         zones: list["Zone"] | None = None,
         stream_config: "StreamConfig | None" = None,
@@ -477,11 +477,7 @@ class Detector:
         Parameters
         ----------
         zm_client:
-            A :class:`pyzm.zm.ZMClient` (or compatible) that provides
-            ``get_event_frames(event_id, stream_config)`` returning
-            ``(frames, image_dimensions)`` where *frames* is a list of
-            ``(frame_id, np.ndarray)`` tuples and *image_dimensions* is a
-            dict with ``'original'`` and ``'resized'`` keys.
+            A :class:`pyzm.client.ZMClient`.
         event_id:
             ZoneMinder event ID.
         zones:
@@ -499,9 +495,7 @@ class Detector:
 
         # URL mode: send frame URLs to the server instead of fetching frames locally
         if self._gateway and self._gateway_mode == "url":
-            api = getattr(zm_client, "api", None)
-            if api is None:
-                raise AttributeError("zm_client.api required for URL-mode gateway")
+            api = zm_client.api
 
             portal_url = api.portal_url
             auth_str = api.auth.get_auth_string()
@@ -514,14 +508,9 @@ class Detector:
             ]
             return self._remote_detect_urls(frame_urls, auth_str, zones, verify_ssl)
 
-        # Expect zm_client to have a method that returns frames
-        get_frames = getattr(zm_client, "get_event_frames", None)
-        if get_frames is None:
-            raise AttributeError(
-                "zm_client must provide a get_event_frames(event_id, stream_config) method"
-            )
-
-        result = get_frames(event_id, sc)
+        # Get Event object and extract frames via OOP API
+        ev = zm_client.event(event_id)
+        result = ev.extract_frames(stream_config=sc)
 
         # Unpack (frames, image_dims) tuple
         if isinstance(result, tuple) and len(result) == 2 and isinstance(result[1], dict):
@@ -609,7 +598,7 @@ class Detector:
 
     @staticmethod
     def _extract_event_audio(
-        zm_client: object,
+        zm_client: "ZMClient",
         event_id: int,
     ) -> tuple[str | None, int, float, float]:
         """Extract audio from an event's video file for BirdNET analysis.
@@ -654,9 +643,10 @@ class Detector:
             logger.debug("Event %d has no DefaultVideo", event_id)
             return None, -1, -1.0, -1.0
 
-        # Build the video file path via zm_client.event_path()
+        # Build the video file path via Event.path()
         try:
-            video_dir = zm_client.event_path(event_id)
+            ev = zm_client.event(event_id)
+            video_dir = ev.path()
         except Exception:
             logger.debug("Failed to get event path for %d", event_id, exc_info=True)
             return None, -1, -1.0, -1.0

@@ -3,10 +3,15 @@
 # setup_venv.sh — Create a shared Python virtual environment for ZoneMinder
 #
 # Usage:
-#   sudo ./scripts/setup_venv.sh                     # defaults
+#   sudo ./scripts/setup_venv.sh                          # base only (ZM API client)
+#   sudo ./scripts/setup_venv.sh --extras ml              # + ML detection
+#   sudo ./scripts/setup_venv.sh --extras ml,serve        # + ML + remote server
+#   sudo ./scripts/setup_venv.sh --extras ml,serve,train  # everything
 #   sudo ZM_VENV=/custom/path ./scripts/setup_venv.sh
-#   sudo ./scripts/setup_venv.sh --extras serve       # install pyzm[serve]
-#   sudo ./scripts/setup_venv.sh --extras serve,train # install pyzm[serve,train]
+#
+# NOTE: The base install (no --extras) only includes the ZM API client.
+#       For ML detection (Detector), add the 'ml' extra.
+#       The 'serve' and 'train' extras auto-include ML dependencies.
 #
 # This script:
 #   1. Installs the python3-venv OS package if missing

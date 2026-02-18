@@ -13,13 +13,13 @@ pytestmark = [pytest.mark.zm_e2e, pytest.mark.zm_e2e_write]
 
 class TestWriteEvents:
     def test_delete_event(self, zm_client):
-        """delete_event() should delete an event. Picks the oldest event."""
+        """delete() should delete an event. Picks the oldest event."""
         events = zm_client.events(limit=1)
         if not events:
             pytest.skip("No events on ZM server to delete")
 
         ev = events[0]
-        zm_client.delete_event(ev.id)
+        ev.delete()
 
         # Verify it's gone
         with pytest.raises(ValueError, match="not found"):

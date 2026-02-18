@@ -17,12 +17,14 @@ Two modes are available:
 Installation
 ------------
 
+The ``[train]`` extra automatically includes all ML dependencies.
+
 .. code-block:: bash
 
    /opt/zoneminder/venv/bin/pip install "pyzm[train]"
 
-This installs Ultralytics (YOLO), Streamlit, and the canvas/image components
-used by the UI.
+This installs all ML dependencies plus Ultralytics (YOLO), Streamlit, and the
+canvas/image components used by the UI.
 
 .. note::
 

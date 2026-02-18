@@ -4,25 +4,28 @@ Usage::
 
     from pyzm import ZMClient
 
-    zm = ZMClient(apiurl="https://zm.example.com/zm/api", user="admin", password="secret")
+    zm = ZMClient(api_url="https://zm.example.com/zm/api", user="admin", password="secret")
 
     for m in zm.monitors():
         print(m.name, m.function)
+        for z in m.get_zones():
+            print(f"  zone: {z.name}")
 
     for ev in zm.events(monitor_id=1, since="1 hour ago"):
         print(ev.id, ev.cause)
-
-    frames, dims = zm.get_event_frames(12345)
+        ev.update_notes("detected")
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import Any
+from urllib.parse import urlparse, urlencode
 
 from pyzm.models.config import StreamConfig, ZMClientConfig
-from pyzm.models.zm import Event, Frame, Monitor, Zone
+from pyzm.models.zm import Event, Frame, Monitor, PTZCapabilities, Zone
 from pyzm.zm.api import ZMAPI
 from pyzm.zm.media import FrameExtractor
 
@@ -34,7 +37,7 @@ class ZMClient:
 
     Parameters
     ----------
-    apiurl:
+    api_url:
         Full ZM API URL (e.g. ``https://server/zm/api``).
     user:
         ZM username.  ``None`` when auth is disabled.
@@ -42,7 +45,7 @@ class ZMClient:
         ZM password.
     portal_url:
         Full portal URL (e.g. ``https://server/zm``).  Auto-derived from
-        *apiurl* when not provided.
+        *api_url* when not provided.
     verify_ssl:
         Whether to verify SSL certificates.  Set to ``False`` for
         self-signed certs.
@@ -53,7 +56,7 @@ class ZMClient:
 
     def __init__(
         self,
-        apiurl: str | None = None,
+        api_url: str | None = None,
         user: str | None = None,
         password: str | None = None,
         *,
@@ -65,10 +68,10 @@ class ZMClient:
         if config is not None:
             self._config = config
         else:
-            if apiurl is None:
-                raise ValueError("Either 'apiurl' or 'config' must be provided")
+            if api_url is None:
+                raise ValueError("Either 'api_url' or 'config' must be provided")
             self._config = ZMClientConfig(
-                api_url=apiurl.rstrip("/"),
+                api_url=api_url.rstrip("/"),
                 portal_url=portal_url,
                 user=user,
                 password=password,
@@ -109,33 +112,25 @@ class ZMClient:
 
         data = self._api.get("monitors.json")
         raw_list = data.get("monitors", []) if data else []
-        self._monitors = [Monitor.from_api_dict(m) for m in raw_list]
+        self._monitors = [Monitor.from_api_dict(m, client=self) for m in raw_list]
         return self._monitors
 
-    def monitor(self, monitor_id: int) -> Monitor:
-        """Return a single monitor by ID."""
+    def monitor(self, monitor_id: int | str) -> Monitor:
+        """Return a single monitor by ID (int) or name (str, case-insensitive)."""
+        if isinstance(monitor_id, str):
+            needle = monitor_id.lower()
+            for m in self.monitors():
+                if m.name.lower() == needle:
+                    return m
+            raise ValueError(f"Monitor {monitor_id!r} not found")
         for m in self.monitors():
             if m.id == monitor_id:
                 return m
         # Fallback: direct API call
         data = self._api.get(f"monitors/{monitor_id}.json")
         if data and data.get("monitor"):
-            return Monitor.from_api_dict(data["monitor"])
+            return Monitor.from_api_dict(data["monitor"], client=self)
         raise ValueError(f"Monitor {monitor_id} not found")
-
-    def monitor_zones(self, monitor_id: int) -> list[Zone]:
-        """Return detection zones for a monitor."""
-        data = self._api.get(f"zones/forMonitor/{monitor_id}.json")
-        zones: list[Zone] = []
-        for z in data.get("zones", []) if data else []:
-            zd = z.get("Zone", z)
-            coords_str = zd.get("Coords", "")
-            points = _parse_zone_coords(coords_str)
-            zones.append(Zone(
-                name=zd.get("Name", ""),
-                points=points,
-            ))
-        return zones
 
     # ------------------------------------------------------------------
     # Events
@@ -186,33 +181,157 @@ class ZMClient:
 
         data = self._api.get(endpoint, params=params)
         events_list = data.get("events", []) if data else []
-        return [Event.from_api_dict(e) for e in events_list]
+        return [Event.from_api_dict(e, client=self) for e in events_list]
 
     def event(self, event_id: int) -> Event:
         """Fetch a single event by ID."""
         data = self._api.get(f"events/{event_id}.json")
         if data and data.get("event"):
-            return Event.from_api_dict(data["event"])
+            return Event.from_api_dict(data["event"], client=self)
         raise ValueError(f"Event {event_id} not found")
 
-    def update_event_notes(self, event_id: int, notes: str) -> None:
+    def delete_events(
+        self,
+        *,
+        monitor_id: int | None = None,
+        before: str | None = None,
+        min_alarm_frames: int | None = None,
+        limit: int = 100,
+    ) -> int:
+        """Query events matching filters and delete each one. Returns count deleted."""
+        matched = self.events(
+            monitor_id=monitor_id,
+            until=before,
+            min_alarm_frames=min_alarm_frames,
+            limit=limit,
+        )
+        for ev in matched:
+            self._api.delete(f"events/{ev.id}.json")
+        return len(matched)
+
+    # ------------------------------------------------------------------
+    # Internal resource operations (called by Monitor/Event methods)
+    # ------------------------------------------------------------------
+
+    def _delete_event(self, event_id: int) -> None:
+        """Delete a single event."""
+        self._api.delete(f"events/{event_id}.json")
+
+    def _monitor_zones(self, monitor_id: int) -> list[Zone]:
+        """Return detection zones for a monitor."""
+        data = self._api.get(f"zones/forMonitor/{monitor_id}.json")
+        zones: list[Zone] = []
+        for z in data.get("zones", []) if data else []:
+            zd = z.get("Zone", z)
+            coords_str = zd.get("Coords", "")
+            points = _parse_zone_coords(coords_str)
+            zones.append(Zone(
+                name=zd.get("Name", ""),
+                points=points,
+            ))
+        return zones
+
+    def _arm(self, monitor_id: int) -> dict:
+        """Trigger alarm ON for a monitor."""
+        return self._api.get(f"monitors/alarm/id:{monitor_id}/command:on.json")
+
+    def _disarm(self, monitor_id: int) -> dict:
+        """Cancel alarm for a monitor."""
+        return self._api.get(f"monitors/alarm/id:{monitor_id}/command:off.json")
+
+    def _alarm_status(self, monitor_id: int) -> dict:
+        """Get alarm status for a monitor."""
+        return self._api.get(f"monitors/alarm/id:{monitor_id}/command:status.json")
+
+    def _update_monitor(self, monitor_id: int, **kwargs) -> None:
+        """Update monitor fields (function, enabled, name, etc.)."""
+        data = {f"Monitor[{k}]": v for k, v in kwargs.items()}
+        self._api.put(f"monitors/{monitor_id}.json", data=data)
+        self._monitors = None  # invalidate cache
+
+    def _zms_url(self, monitor_id: int, mode: str, **kwargs) -> str:
+        """Build a ZMS CGI URL for a monitor.
+
+        Uses the ``ZM_PATH_ZMS`` config to locate the ZMS CGI endpoint and
+        deduplicates any overlapping path prefix with the portal URL.
+        """
+        zms_path = self.config("ZM_PATH_ZMS")["Value"]
+        portal_url = self._api.portal_url
+        portal_path = urlparse(portal_url).path.rstrip("/")
+
+        # Deduplicate overlapping prefix (e.g. portal /zm + zms /zm/cgi-bin/...)
+        if portal_path and zms_path.startswith(portal_path):
+            zms_path = zms_path[len(portal_path):]
+
+        params = {"mode": mode, "monitor": str(monitor_id), **kwargs}
+        return f"{portal_url}{zms_path}?{urlencode(params)}"
+
+    def _streaming_url_mjpeg(self, monitor_id: int, **kwargs) -> str:
+        """Build an MJPEG streaming URL for a monitor."""
+        return self._zms_url(monitor_id, "jpeg", **kwargs)
+
+    def _snapshot_url(self, monitor_id: int, **kwargs) -> str:
+        """Build a single-frame snapshot URL for a monitor."""
+        return self._zms_url(monitor_id, "single", **kwargs)
+
+    def _daemon_status(self, monitor_id: int) -> dict:
+        """Get daemon status for a monitor's capture daemon (zmc)."""
+        return self._api.get(
+            f"monitors/daemonStatus/id:{monitor_id}/daemon:zmc.json"
+        ) or {}
+
+    def _ptz_capabilities(self, control_id: int) -> PTZCapabilities:
+        """Fetch PTZ capabilities for a control profile."""
+        data = self._api.get(f"controls/{control_id}.json")
+        if not data or "control" not in data:
+            raise ValueError(f"Control profile {control_id} not found")
+        ctrl = data["control"].get("Control", data["control"])
+        return PTZCapabilities.from_api_dict(ctrl)
+
+    def _ptz_command(
+        self, monitor_id: int, command: str, *, mode: str = "con",
+        preset: int = 1, stop_after: float | None = None,
+    ) -> None:
+        """Send a PTZ command to a monitor via the ZM portal.
+
+        Translates user-friendly command names to ZM's internal names:
+
+        - ``"up"`` → ``moveConUp`` / ``moveRelUp`` / ``moveAbsUp``
+        - ``"zoom_in"`` → ``zoomConTele`` / ``zoomRelTele`` / ``zoomAbsTele``
+        - ``"stop"`` → ``moveStop``
+        - ``"home"`` → ``presetHome``
+        - ``"preset"`` (with preset=N) → ``presetGotoN``
+
+        If *stop_after* is set, sleeps that many seconds then sends
+        ``moveStop``.
+        """
+        zm_command = _ptz_command_name(command, mode=mode, preset=preset)
+        portal_url = self._api.portal_url
+        url = f"{portal_url}/index.php"
+        params = {
+            "view": "request",
+            "request": "control",
+            "id": str(monitor_id),
+            "control": zm_command,
+            "xge": "0",
+            "yge": "0",
+        }
+        self._api.request(url, params=params)
+
+        if stop_after is not None and stop_after > 0 and command != "stop":
+            time.sleep(stop_after)
+            self._api.request(url, params={**params, "control": "moveStop"})
+
+    def _update_event_notes(self, event_id: int, notes: str) -> None:
         """Update the Notes field of an event."""
         url = f"events/{event_id}.json"
         self._api.put(url, data={"Event[Notes]": notes})
 
-    def tag_event(self, event_id: int, labels: list[str]) -> None:
+    def _tag_event(self, event_id: int, labels: list[str]) -> None:
         """Tag an event with detected object labels.
 
         For each unique label, creates the tag if it doesn't exist and
         associates it with the event.  Requires ZM >= 1.37.44.
-
-        Parameters
-        ----------
-        event_id:
-            ZoneMinder event ID.
-        labels:
-            Detection labels to tag (e.g. ``["person", "car"]``).
-            Duplicates are ignored.
         """
         unique = list(dict.fromkeys(labels))  # dedupe, preserve order
         if not unique:
@@ -265,16 +384,8 @@ class ZMClient:
         conn.commit()
         cur.close()
 
-    # ------------------------------------------------------------------
-    # Event path
-    # ------------------------------------------------------------------
-
-    def event_path(self, event_id: int) -> str | None:
-        """Construct the filesystem path for an event, same as ZoneMinder::Event->Path().
-
-        Queries the DB for StoragePath, Scheme, MonitorId, and StartDateTime,
-        then builds the relative path based on the storage scheme.
-        """
+    def _event_path(self, event_id: int) -> str | None:
+        """Construct the filesystem path for an event."""
         from datetime import datetime as _dt
         from pyzm.zm.db import get_zm_db
 
@@ -315,16 +426,8 @@ class ZMClient:
         logger.debug("Event %s path (scheme=%s): %s", event_id, scheme, path)
         return path
 
-    def event_frames(self, event_id: int) -> list[Frame]:
-        """Fetch per-frame metadata (Score, Type, Delta) for an event.
-
-        Uses the ZM ``frames/index/EventId:{id}.json`` API endpoint.
-
-        Returns
-        -------
-        list[Frame]
-            One :class:`Frame` per frame in the event, ordered by FrameId.
-        """
+    def _event_frames(self, event_id: int) -> list[Frame]:
+        """Fetch per-frame metadata (Score, Type, Delta) for an event."""
         data = self._api.get(f"frames/index/EventId:{event_id}.json")
         raw_list = data.get("frames", []) if data else []
         frames: list[Frame] = []
@@ -339,24 +442,12 @@ class ZMClient:
             ))
         return frames
 
-    # ------------------------------------------------------------------
-    # Frames
-    # ------------------------------------------------------------------
-
-    def get_event_frames(
+    def _get_event_frames(
         self,
         event_id: int,
         stream_config: StreamConfig | None = None,
     ) -> tuple[list[tuple[int | str, Any]], dict[str, tuple[int, int] | None]]:
-        """Extract frames from a ZM event.
-
-        Returns
-        -------
-        tuple[list[tuple[frame_id, ndarray]], dict]
-            A pair of ``(frames, image_dimensions)`` where *frames* is a
-            list of ``(frame_id, numpy_array)`` tuples and
-            *image_dimensions* is ``{'original': (h,w), 'resized': (rh,rw)|None}``.
-        """
+        """Extract frames from a ZM event as numpy arrays."""
         sc = stream_config or StreamConfig()
         extractor = FrameExtractor(api=self._api, stream_config=sc)
         frames: list[tuple[int | str, Any]] = []
@@ -375,69 +466,6 @@ class ZMClient:
             "resized": resized,
         }
         return frames, image_dims
-
-    # ------------------------------------------------------------------
-    # Monitor alarm (arm / disarm)
-    # ------------------------------------------------------------------
-
-    def arm(self, monitor_id: int) -> dict:
-        """Trigger alarm ON for a monitor."""
-        return self._api.get(f"monitors/alarm/id:{monitor_id}/command:on.json")
-
-    def disarm(self, monitor_id: int) -> dict:
-        """Cancel alarm for a monitor."""
-        return self._api.get(f"monitors/alarm/id:{monitor_id}/command:off.json")
-
-    def alarm_status(self, monitor_id: int) -> dict:
-        """Get alarm status for a monitor."""
-        return self._api.get(f"monitors/alarm/id:{monitor_id}/command:status.json")
-
-    # ------------------------------------------------------------------
-    # Monitor update
-    # ------------------------------------------------------------------
-
-    def update_monitor(self, monitor_id: int, **kwargs) -> None:
-        """Update monitor fields (function, enabled, name, etc.)."""
-        data = {f"Monitor[{k}]": v for k, v in kwargs.items()}
-        self._api.put(f"monitors/{monitor_id}.json", data=data)
-        self._monitors = None  # invalidate cache
-
-    # ------------------------------------------------------------------
-    # Monitor daemon status
-    # ------------------------------------------------------------------
-
-    def daemon_status(self, monitor_id: int) -> dict:
-        """Get daemon status for a monitor's capture daemon (zmc)."""
-        return self._api.get(
-            f"monitors/daemonStatus/id:{monitor_id}/daemon:zmc.json"
-        ) or {}
-
-    # ------------------------------------------------------------------
-    # Event deletion
-    # ------------------------------------------------------------------
-
-    def delete_event(self, event_id: int) -> None:
-        """Delete a single event."""
-        self._api.delete(f"events/{event_id}.json")
-
-    def delete_events(
-        self,
-        *,
-        monitor_id: int | None = None,
-        before: str | None = None,
-        min_alarm_frames: int | None = None,
-        limit: int = 100,
-    ) -> int:
-        """Query events matching filters and delete each one. Returns count deleted."""
-        matched = self.events(
-            monitor_id=monitor_id,
-            until=before,
-            min_alarm_frames=min_alarm_frames,
-            limit=limit,
-        )
-        for ev in matched:
-            self._api.delete(f"events/{ev.id}.json")
-        return len(matched)
 
     # ------------------------------------------------------------------
     # System health
@@ -478,13 +506,7 @@ class ZMClient:
         return [c.get("Config", c) for c in raw]
 
     def config(self, name: str) -> dict:
-        """Get a single config parameter by name.
-
-        Returns the unwrapped Config dict. The ``viewByName`` endpoint
-        may return either ``{"config": {"Config": {...}}}`` (older ZM)
-        or ``{"config": {"Value": ...}}`` (newer ZM 1.38+). We normalise
-        both by injecting *name* as ``Name`` when the key is missing.
-        """
+        """Get a single config parameter by name."""
         data = self._api.get(f"configs/viewByName/{name}.json")
         if data and data.get("config"):
             cfg = data["config"].get("Config", data["config"])
@@ -493,15 +515,9 @@ class ZMClient:
         raise ValueError(f"Config '{name}' not found")
 
     def set_config(self, name: str, value: str) -> None:
-        """Set a config parameter value. System configs are read-only.
-
-        Looks up the config Id from the full configs list since the
-        ``viewByName`` endpoint may not return it on newer ZM versions.
-        """
-        # Try viewByName first (has Id on some versions)
+        """Set a config parameter value."""
         cfg = self.config(name)
         config_id = cfg.get("Id")
-        # Fallback: scan full configs list
         if not config_id:
             for c in self.configs():
                 if c.get("Name") == name:
@@ -567,17 +583,51 @@ def _parse_zone_coords(coords_str: str) -> list[tuple[int, int]]:
     return points
 
 
+_PTZ_MOVE_MAP = {
+    "up": "Up", "down": "Down", "left": "Left", "right": "Right",
+    "up_left": "UpLeft", "up_right": "UpRight",
+    "down_left": "DownLeft", "down_right": "DownRight",
+}
+
+_PTZ_ZOOM_MAP = {"zoom_in": "Tele", "zoom_out": "Wide"}
+
+_PTZ_MODE_PREFIX = {"con": "Con", "rel": "Rel", "abs": "Abs"}
+
+
+def _ptz_command_name(command: str, *, mode: str = "con", preset: int = 1) -> str:
+    """Translate a user-friendly PTZ command to a ZM internal command name."""
+    cmd = command.lower().strip()
+
+    if cmd == "stop":
+        return "moveStop"
+    if cmd == "home":
+        return "presetHome"
+    if cmd == "preset":
+        return f"presetGoto{preset}"
+
+    mode_suffix = _PTZ_MODE_PREFIX.get(mode)
+    if mode_suffix is None:
+        raise ValueError(f"Unknown PTZ mode {mode!r}; use 'con', 'rel', or 'abs'")
+
+    if cmd in _PTZ_MOVE_MAP:
+        return f"move{mode_suffix}{_PTZ_MOVE_MAP[cmd]}"
+    if cmd in _PTZ_ZOOM_MAP:
+        return f"zoom{mode_suffix}{_PTZ_ZOOM_MAP[cmd]}"
+
+    raise ValueError(
+        f"Unknown PTZ command {command!r}; use one of: "
+        f"{', '.join(sorted({*_PTZ_MOVE_MAP, *_PTZ_ZOOM_MAP, 'stop', 'home', 'preset'}))}"
+    )
+
+
 def _parse_human_time(time_str: str) -> str | None:
     """Parse human-readable time strings into ISO format.
 
     Supports formats like ``"1 hour ago"``, ``"2024-01-15 10:30:00"``.
     Falls back to returning the string as-is for ZM to parse.
     """
-    try:
-        import dateparser
-        dt = dateparser.parse(time_str)
-        if dt:
-            return dt.strftime("%Y-%m-%d %H:%M:%S")
-    except ImportError:
-        pass
+    import dateparser
+    dt = dateparser.parse(time_str)
+    if dt:
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
     return time_str

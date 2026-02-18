@@ -209,11 +209,11 @@ def object_event(zm_client: ZMClient):
 
 
 @pytest.fixture
-def note_restorer(zm_client: ZMClient, any_event):
+def note_restorer(any_event):
     """Save event notes before test, restore them in teardown."""
     original = any_event.notes
     yield any_event
-    zm_client.update_event_notes(any_event.id, original or "")
+    any_event.update_notes(original or "")
 
 
 # ---------------------------------------------------------------------------
