@@ -75,7 +75,7 @@ class TestZMClientCreation:
         mock_zmapi_cls.return_value = _make_mock_api()
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api", user="admin", password="secret")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api", user="admin", password="secret")
 
         mock_zmapi_cls.assert_called_once()
         assert client.api is not None
@@ -91,37 +91,18 @@ class TestZMClientCreation:
         mock_zmapi_cls.assert_called_once()
 
     @patch("pyzm.client.ZMAPI")
-    def test_creation_auto_appends_api(self, mock_zmapi_cls):
+    def test_creation_strips_trailing_slash(self, mock_zmapi_cls):
         mock_zmapi_cls.return_value = _make_mock_api()
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm", user="admin", password="secret")
-
-        # The config should have /api appended
-        assert client._config.api_url == "https://zm.example.com/zm/api"
-
-    @patch("pyzm.client.ZMAPI")
-    def test_creation_auto_appends_api_trailing_slash(self, mock_zmapi_cls):
-        mock_zmapi_cls.return_value = _make_mock_api()
-
-        from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/", user="admin", password="secret")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api/", user="admin", password="secret")
 
         assert client._config.api_url == "https://zm.example.com/zm/api"
 
     @patch("pyzm.client.ZMAPI")
-    def test_creation_does_not_double_append_api(self, mock_zmapi_cls):
-        mock_zmapi_cls.return_value = _make_mock_api()
-
+    def test_creation_no_apiurl_no_config_raises(self, mock_zmapi_cls):
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api", user="admin", password="secret")
-
-        assert client._config.api_url == "https://zm.example.com/zm/api"
-
-    @patch("pyzm.client.ZMAPI")
-    def test_creation_no_url_no_config_raises(self, mock_zmapi_cls):
-        from pyzm.client import ZMClient
-        with pytest.raises(ValueError, match="Either 'url' or 'config'"):
+        with pytest.raises(ValueError, match="Either 'apiurl' or 'config'"):
             ZMClient()
 
     @patch("pyzm.client.ZMAPI")
@@ -130,7 +111,7 @@ class TestZMClientCreation:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         assert client.zm_version == "1.36.12"
         assert client.api_version == "2.0.0"
@@ -155,7 +136,7 @@ class TestZMClientMonitors:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         monitors = client.monitors()
         assert len(monitors) == 2
@@ -177,7 +158,7 @@ class TestZMClientMonitors:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         client.monitors()  # first fetch
         mock_api.get.reset_mock()
@@ -205,7 +186,7 @@ class TestZMClientMonitors:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         m = client.monitor(2)
         assert m.id == 2
@@ -222,7 +203,7 @@ class TestZMClientMonitors:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         m = client.monitor(99)
         assert m.id == 99
@@ -237,7 +218,7 @@ class TestZMClientMonitors:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         with pytest.raises(ValueError, match="not found"):
             client.monitor(999)
@@ -262,7 +243,7 @@ class TestZMClientEvents:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         events = client.events()
         assert len(events) == 2
@@ -276,7 +257,7 @@ class TestZMClientEvents:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         client.events(monitor_id=2)
 
@@ -291,7 +272,7 @@ class TestZMClientEvents:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         client.events(
             monitor_id=1,
@@ -316,7 +297,7 @@ class TestZMClientEvents:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         ev = client.event(42)
         assert ev.id == 42
@@ -328,7 +309,7 @@ class TestZMClientEvents:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         with pytest.raises(ValueError, match="not found"):
             client.event(99999)
@@ -358,7 +339,7 @@ class TestZMClientFrames:
         mock_extractor_cls.return_value = mock_extractor
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         frames, image_dims = client.get_event_frames(12345)
         assert len(frames) == 1
@@ -378,7 +359,7 @@ class TestZMClientFrames:
         mock_extractor_cls.return_value = mock_extractor
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         sc = StreamConfig(frame_set=["1", "5"], max_frames=2)
         client.get_event_frames(12345, stream_config=sc)
@@ -402,7 +383,7 @@ class TestZMClientUpdateNotes:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         client.update_event_notes(12345, "person:97% detected")
 
@@ -433,7 +414,7 @@ class TestZMClientTagEvent:
         mock_get_db.return_value = mock_conn
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
         client.tag_event(12345, ["person"])
 
         # Should INSERT new tag then link it
@@ -456,7 +437,7 @@ class TestZMClientTagEvent:
         mock_get_db.return_value = mock_conn
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
         client.tag_event(12345, ["person"])
 
         calls = mock_cursor.execute.call_args_list
@@ -481,7 +462,7 @@ class TestZMClientTagEvent:
         mock_get_db.return_value = mock_conn
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
         client.tag_event(12345, ["person", "person", "car", "car"])
 
         # Should only process 2 unique labels, not 4
@@ -495,7 +476,7 @@ class TestZMClientTagEvent:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
         client.tag_event(12345, [])
         # No DB calls should happen
 
@@ -508,7 +489,7 @@ class TestZMClientTagEvent:
         mock_get_db.return_value = None
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
         client.tag_event(12345, ["person"])  # should not raise
 
 
@@ -525,7 +506,7 @@ class TestZMClientState:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         client.set_state("restart")
         mock_api.get.assert_called_with("states/change/restart.json")
@@ -536,7 +517,7 @@ class TestZMClientState:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         client.start()
         mock_api.get.assert_called_with("states/change/start.json")
@@ -547,7 +528,7 @@ class TestZMClientState:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         client.stop()
         mock_api.get.assert_called_with("states/change/stop.json")
@@ -573,7 +554,7 @@ class TestZMClientEventFrames:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         frames = client.event_frames(100)
         assert len(frames) == 3
@@ -593,7 +574,7 @@ class TestZMClientEventFrames:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         client.event_frames(12345)
         mock_api.get.assert_called_with("frames/index/EventId:12345.json")
@@ -605,7 +586,7 @@ class TestZMClientEventFrames:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         frames = client.event_frames(999)
         assert frames == []
@@ -617,7 +598,7 @@ class TestZMClientEventFrames:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         frames = client.event_frames(999)
         assert frames == []
@@ -634,7 +615,7 @@ class TestZMClientEventFrames:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         frames = client.event_frames(200)
         assert len(frames) == 1
@@ -655,7 +636,7 @@ class TestZMClientArmDisarm:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         client.arm(5)
         mock_api.get.assert_called_with("monitors/alarm/id:5/command:on.json")
@@ -666,7 +647,7 @@ class TestZMClientArmDisarm:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         client.disarm(5)
         mock_api.get.assert_called_with("monitors/alarm/id:5/command:off.json")
@@ -677,7 +658,7 @@ class TestZMClientArmDisarm:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         client.alarm_status(5)
         mock_api.get.assert_called_with("monitors/alarm/id:5/command:status.json")
@@ -696,7 +677,7 @@ class TestZMClientUpdateMonitor:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         client.update_monitor(3, Function="Modect", Enabled="1")
         mock_api.put.assert_called_once_with(
@@ -713,7 +694,7 @@ class TestZMClientUpdateMonitor:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         client.monitors()  # populate cache
         assert client._monitors is not None
@@ -735,7 +716,7 @@ class TestZMClientDeleteEvent:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         client.delete_event(42)
         mock_api.delete.assert_called_once_with("events/42.json")
@@ -752,7 +733,7 @@ class TestZMClientDeleteEvent:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         count = client.delete_events(monitor_id=1, limit=50)
         assert count == 2
@@ -767,7 +748,7 @@ class TestZMClientDeleteEvent:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         count = client.delete_events(before="2020-01-01")
         assert count == 0
@@ -788,7 +769,7 @@ class TestZMClientSystemHealth:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         assert client.is_running() is True
         mock_api.get.assert_called_with("host/daemonCheck.json")
@@ -800,7 +781,7 @@ class TestZMClientSystemHealth:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         assert client.is_running() is False
 
@@ -811,7 +792,7 @@ class TestZMClientSystemHealth:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         assert client.is_running() is False
 
@@ -822,7 +803,7 @@ class TestZMClientSystemHealth:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         load = client.system_load()
         assert load == {"1min": 0.5, "5min": 1.2, "15min": 0.8}
@@ -835,7 +816,7 @@ class TestZMClientSystemHealth:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         assert client.system_load() == {}
 
@@ -846,7 +827,7 @@ class TestZMClientSystemHealth:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         result = client.disk_usage()
         assert result == {"usage": {"/": 45.2}}
@@ -859,7 +840,7 @@ class TestZMClientSystemHealth:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         assert client.disk_usage() == {}
 
@@ -871,7 +852,7 @@ class TestZMClientSystemHealth:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         assert client.timezone() == "America/New_York"
         mock_api.get.assert_called_with("host/getTimeZone.json")
@@ -884,7 +865,7 @@ class TestZMClientSystemHealth:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         assert client.timezone() == "US/Eastern"
 
@@ -895,7 +876,7 @@ class TestZMClientSystemHealth:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         assert client.timezone() == ""
 
@@ -914,7 +895,7 @@ class TestZMClientDaemonStatus:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         result = client.daemon_status(3)
         assert result == {"status": True}
@@ -929,7 +910,7 @@ class TestZMClientDaemonStatus:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         assert client.daemon_status(3) == {}
 
@@ -953,7 +934,7 @@ class TestZMClientConfigs:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         cfgs = client.configs()
         assert len(cfgs) == 2
@@ -968,7 +949,7 @@ class TestZMClientConfigs:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         assert client.configs() == []
 
@@ -982,7 +963,7 @@ class TestZMClientConfigs:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         cfg = client.config("ZM_TIMEZONE")
         assert cfg["Name"] == "ZM_TIMEZONE"
@@ -999,7 +980,7 @@ class TestZMClientConfigs:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         cfg = client.config("ZM_LANG_DEFAULT")
         assert cfg["Name"] == "ZM_LANG_DEFAULT"  # injected by setdefault
@@ -1012,7 +993,7 @@ class TestZMClientConfigs:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         with pytest.raises(ValueError, match="not found"):
             client.config("ZM_NONEXISTENT")
@@ -1027,7 +1008,7 @@ class TestZMClientConfigs:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         client.set_config("ZM_TIMEZONE", "US/Pacific")
         mock_api.put.assert_called_once_with(
@@ -1045,7 +1026,7 @@ class TestZMClientConfigs:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         with pytest.raises(ValueError, match="not found or has no Id"):
             client.set_config("ZM_BROKEN", "value")
@@ -1070,7 +1051,7 @@ class TestZMClientStates:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         result = client.states()
         assert len(result) == 2
@@ -1085,7 +1066,7 @@ class TestZMClientStates:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         assert client.states() == []
 
@@ -1096,7 +1077,7 @@ class TestZMClientStates:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         assert client.states() == []
 
@@ -1119,7 +1100,7 @@ class TestZMClientServersStorage:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         result = client.servers()
         assert len(result) == 1
@@ -1133,7 +1114,7 @@ class TestZMClientServersStorage:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         assert client.servers() == []
 
@@ -1148,7 +1129,7 @@ class TestZMClientServersStorage:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         result = client.storage()
         assert len(result) == 1
@@ -1162,6 +1143,6 @@ class TestZMClientServersStorage:
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
-        client = ZMClient(url="https://zm.example.com/zm/api")
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
 
         assert client.storage() == []

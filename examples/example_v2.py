@@ -94,7 +94,7 @@ else:
 from pyzm import ZMClient, Detector, StreamConfig
 from pyzm.models.config import DetectorConfig
 
-zm = ZMClient(url="https://zm.example.com/zm/api", user="admin", password="secret")
+zm = ZMClient(apiurl="https://zm.example.com/zm/api", user="admin", password="secret")
 detector = Detector(models=["yolo11s"])
 
 event_id = 12345

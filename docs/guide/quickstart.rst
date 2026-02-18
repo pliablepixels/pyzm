@@ -131,7 +131,7 @@ Detecting on a ZoneMinder event
 
    from pyzm import ZMClient, Detector, StreamConfig
 
-   zm = ZMClient(url="https://zm.example.com/zm/api",
+   zm = ZMClient(apiurl="https://zm.example.com/zm/api",
                   user="admin", password="secret")
    detector = Detector(models=["yolo11s"])
 

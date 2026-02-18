@@ -42,7 +42,7 @@ Quick example
    from pyzm import ZMClient, Detector
 
    # Connect to ZoneMinder
-   zm = ZMClient(url="https://zm.example.com/zm/api",
+   zm = ZMClient(apiurl="https://zm.example.com/zm/api",
                   user="admin", password="secret")
 
    for m in zm.monitors():

@@ -4,7 +4,7 @@ Usage::
 
     from pyzm import ZMClient
 
-    zm = ZMClient(url="https://zm.example.com/zm/api", user="admin", password="secret")
+    zm = ZMClient(apiurl="https://zm.example.com/zm/api", user="admin", password="secret")
 
     for m in zm.monitors():
         print(m.name, m.function)
@@ -34,17 +34,15 @@ class ZMClient:
 
     Parameters
     ----------
-    url:
-        ZM URL -- either the API URL (``https://server/zm/api``) or the
-        portal URL (``https://server/zm``).  If ``/api`` is missing it is
-        appended automatically.
+    apiurl:
+        Full ZM API URL (e.g. ``https://server/zm/api``).
     user:
         ZM username.  ``None`` when auth is disabled.
     password:
         ZM password.
     portal_url:
         Full portal URL (e.g. ``https://server/zm``).  Auto-derived from
-        *url* when not provided.
+        *apiurl* when not provided.
     verify_ssl:
         Whether to verify SSL certificates.  Set to ``False`` for
         self-signed certs.
@@ -55,7 +53,7 @@ class ZMClient:
 
     def __init__(
         self,
-        url: str | None = None,
+        apiurl: str | None = None,
         user: str | None = None,
         password: str | None = None,
         *,
@@ -67,15 +65,10 @@ class ZMClient:
         if config is not None:
             self._config = config
         else:
-            if url is None:
-                raise ValueError("Either 'url' or 'config' must be provided")
-            # Auto-append /api if the user gave us the portal URL
-            api_url = url.rstrip("/")
-            if not api_url.endswith("/api"):
-                logger.debug("URL %r does not end with /api, appending it", url)
-                api_url = api_url + "/api"
+            if apiurl is None:
+                raise ValueError("Either 'apiurl' or 'config' must be provided")
             self._config = ZMClientConfig(
-                api_url=api_url,
+                api_url=apiurl.rstrip("/"),
                 portal_url=portal_url,
                 user=user,
                 password=password,
