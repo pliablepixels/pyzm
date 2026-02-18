@@ -533,6 +533,17 @@ class TestZMClientState:
         client.stop()
         mock_api.get.assert_called_with("states/change/stop.json")
 
+    @patch("pyzm.client.ZMAPI")
+    def test_restart(self, mock_zmapi_cls):
+        mock_api = _make_mock_api()
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(apiurl="https://zm.example.com/zm/api")
+
+        client.restart()
+        mock_api.get.assert_called_with("states/change/restart.json")
+
 
 # ===================================================================
 # TestZMClient - event_frames (Ref: ZoneMinder/pyzm#52)

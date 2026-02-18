@@ -5,7 +5,7 @@ import os
 import re
 import codecs
 
-from setuptools import setup
+from setuptools import setup, find_packages
 
 #Package meta-data.
 NAME = 'pyzm'
@@ -77,54 +77,6 @@ setup(name = NAME,
               'st-clickable-images>=0.0.3',
           ],
       },
-      py_modules = [
-                    'pyzm.client',
-                    'pyzm.log',
-                    'pyzm.models.config',
-                    'pyzm.models.detection',
-                    'pyzm.models.zm',
-                    'pyzm.zm.api',
-                    'pyzm.zm.auth',
-                    'pyzm.zm.db',
-                    'pyzm.zm.media',
-                    'pyzm.zm.shm',
-                    'pyzm.ml.detector',
-                    'pyzm.ml.pipeline',
-                    'pyzm.ml.filters',
-                    'pyzm.ml.backends.base',
-                    'pyzm.ml.backends.yolo',
-                    'pyzm.ml.backends.coral',
-                    'pyzm.ml.backends.face_dlib',
-                    'pyzm.ml.backends.alpr',
-                    'pyzm.ml.backends.rekognition',
-
-                    # Serve (remote ML detection server)
-                    'pyzm.serve',
-                    'pyzm.serve.app',
-                    'pyzm.serve.auth',
-
-                    # Train (YOLO fine-tuning UI)
-                    'pyzm.train',
-                    'pyzm.train.__main__',
-                    'pyzm.train.app',
-                    'pyzm.train.trainer',
-                    'pyzm.train.dataset',
-                    'pyzm.train.auto_label',
-                    'pyzm.train.verification',
-                    'pyzm.train.zm_browser',
-                    'pyzm.train.local_import',
-
-                    # ML implementations (wrapped by backends)
-                    'pyzm.ml.alpr',
-                    'pyzm.ml.face',
-                    'pyzm.ml.face_dlib',
-                    'pyzm.ml.face_tpu',
-                    'pyzm.ml.face_train_dlib',
-                    'pyzm.ml.coral_edgetpu',
-                    'pyzm.ml.aws_rekognition',
-                    'pyzm.ml.yolo',
-                    'pyzm.ml.yolo_darknet',
-                    'pyzm.ml.yolo_onnx',
-                    ]
+      packages=find_packages(exclude=["tests", "tests.*"]),
       )
 

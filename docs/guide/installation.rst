@@ -38,26 +38,23 @@ installer):
 
    sudo python3 -m venv /opt/zoneminder/venv --system-site-packages
    sudo /opt/zoneminder/venv/bin/pip install --upgrade pip setuptools wheel
+   sudo chown -R www-data:www-data /opt/zoneminder/venv
 
 **2. Install pyzm:**
 
 .. code-block:: bash
 
+   # All extras (remote ML server + model fine-tuning UI):
+   sudo /opt/zoneminder/venv/bin/pip install "pyzm[serve,train]"
+
+   # Only the remote ML server:
+   sudo /opt/zoneminder/venv/bin/pip install "pyzm[serve]"
+
+   # Only the model fine-tuning UI:
+   sudo /opt/zoneminder/venv/bin/pip install "pyzm[train]"
+
+   # Core only (API + ML detection, no server/training):
    sudo /opt/zoneminder/venv/bin/pip install pyzm
-
-With extras:
-
-.. code-block:: bash
-
-   sudo /opt/zoneminder/venv/bin/pip install "pyzm[serve]"        # remote ML server
-   sudo /opt/zoneminder/venv/bin/pip install "pyzm[train]"        # model fine-tuning UI
-   sudo /opt/zoneminder/venv/bin/pip install "pyzm[serve,train]"  # everything
-
-**3. Set ownership** so ``www-data`` can use the venv:
-
-.. code-block:: bash
-
-   sudo chown -R www-data:www-data /opt/zoneminder/venv
 
 Path B: Install from source
 -----------------------------
@@ -69,11 +66,15 @@ OpenCV shim, and ownership in one step.
 
    git clone https://github.com/pliablepixels/pyzm.git
    cd pyzm
-   sudo ./scripts/setup_venv.sh
 
-   # With extras:
-   sudo ./scripts/setup_venv.sh --extras serve
+   # All extras (remote ML server + model fine-tuning UI):
    sudo ./scripts/setup_venv.sh --extras serve,train
+
+   # Only the remote ML server:
+   sudo ./scripts/setup_venv.sh --extras serve
+
+   # Core only (API + ML detection, no server/training):
+   sudo ./scripts/setup_venv.sh
 
    # Custom venv path:
    sudo ZM_VENV=/usr/local/zm/venv ./scripts/setup_venv.sh
