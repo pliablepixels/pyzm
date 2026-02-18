@@ -39,9 +39,11 @@ else:
 if len(sys.argv) >= 3:
     gateway = sys.argv[2]
 
-# --- Image mode (default) ---
-# The image is JPEG-encoded and uploaded to the server.
+# URL mode is the default -- detect_event() sends frame URLs and the
+# server fetches them directly from ZoneMinder.
+# Use gateway_mode="image" if the server can't reach ZM directly.
 detector = Detector(models=["yolo11s"], gateway=gateway)
+# detector = Detector(models=["yolo11s"], gateway=gateway, gateway_mode="image")
 
 # With authentication:
 # detector = Detector(
@@ -51,31 +53,23 @@ detector = Detector(models=["yolo11s"], gateway=gateway)
 #     gateway_password="secret",
 # )
 
+# detect() always uploads the image (single-image mode)
 result = detector.detect(image_path)
 
 print(f"SUMMARY: {result.summary}")
 for det in result.detections:
     print(f"  {det.label}: {det.confidence:.0%}")
 
-
-# --- URL mode ---
-# Instead of uploading images, the client sends frame URLs and the
-# server fetches them directly from ZoneMinder.
+# detect_event() uses URL mode by default -- sends frame URLs,
+# server fetches them directly from ZM:
 #
 # from pyzm import ZMClient, StreamConfig
 #
 # zm = ZMClient(api_url="https://zm.example.com/zm/api",
 #               user="admin", password="secret")
 #
-# detector = Detector(
-#     models=["yolo11s"],
-#     gateway="http://gpu-box:5000",
-#     gateway_mode="url",
-# )
-#
 # result = detector.detect_event(
 #     zm, event_id=12345,
 #     stream_config=StreamConfig(frame_set=["snapshot", "alarm"]),
 # )
-#
 # print(result.summary)

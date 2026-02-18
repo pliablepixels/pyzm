@@ -3,37 +3,38 @@ Remote ML Detection Server
 
 ``pyzm.serve`` is a built-in FastAPI server that loads ML models once
 and serves detection requests over HTTP. This lets you offload GPU-heavy
-inference to a dedicated machine while your ZoneMinder box sends
-lightweight image uploads.
+inference to a dedicated machine.
 
 .. code-block:: text
 
-   Image mode (default)                   GPU box
-   +-----------------+     HTTP/JPEG     +------------------+
-   | zm_detect.py    | ----------------> | pyzm.serve       |
-   | Detector(       |                   |   YOLO11 (GPU)  |
-   |   gateway=...)  | <---------------- |   Coral TPU      |
-   +-----------------+  DetectionResult  +------------------+
-
-   URL mode (gateway_mode="url")          GPU box
+   URL mode (default)                     GPU box
    +-----------------+   frame URLs      +------------------+
    | zm_detect.py    | ----------------> | pyzm.serve       |
    | Detector(       |                   |  fetch from ZM   |
-   |   gateway=...,  | <---------------- |  detect & return |
-   |   gateway_mode= |  DetectionResult  +------------------+
-   |     "url")      |                          |
-   +-----------------+                   +------v-----------+
+   |   gateway=...)  | <---------------- |  detect & return |
+   +-----------------+  DetectionResult  +------------------+
+                                                |
+                                         +------v-----------+
                                          | ZoneMinder API   |
                                          +------------------+
 
+   Image mode (gateway_mode="image")      GPU box
+   +-----------------+     HTTP/JPEG     +------------------+
+   | zm_detect.py    | ----------------> | pyzm.serve       |
+   | Detector(       |                   |   YOLO11 (GPU)  |
+   |   gateway=...,  | <---------------- |   Coral TPU      |
+   |   gateway_mode= |  DetectionResult  +------------------+
+   |     "image")    |
+   +-----------------+
+
 Two detection modes are available:
 
-- **Image mode** (default) -- the client fetches frames from ZM, JPEG-encodes
-  them, and uploads each one to the ``/detect`` endpoint.
-- **URL mode** -- the client sends frame URLs to the ``/detect_urls`` endpoint
-  and the *server* fetches images directly from ZoneMinder. This avoids
-  transferring every frame through the client when the server has faster or
-  direct network access to ZM.
+- **URL mode** (default) -- the client sends frame URLs to the
+  ``/detect_urls`` endpoint and the *server* fetches images directly from
+  ZoneMinder.  This avoids transferring every frame through the client.
+- **Image mode** -- the client fetches frames from ZM, JPEG-encodes them,
+  and uploads each one to the ``/detect`` endpoint.  Use this when the
+  server cannot reach ZoneMinder directly.
 
 
 Deployment scenarios
@@ -138,7 +139,7 @@ Or with specific models and auth:
        --auth --auth-user admin --auth-password secret \
        --token-secret my-jwt-secret
 
-**ZM box objectconfig.yml** (image mode):
+**ZM box objectconfig.yml:**
 
 .. code-block:: yaml
 
@@ -147,25 +148,7 @@ Or with specific models and auth:
        general:
          model_sequence: "object"
          ml_gateway: "http://192.168.1.100:5000"
-         ml_fallback_local: "yes"
-       object:
-         general:
-           pattern: "(person|car)"
-         sequence:
-           - object_framework: opencv
-             object_weights: "/var/lib/zmeventnotification/models/ultralytics/yolo11s.onnx"
-             object_labels: "/var/lib/zmeventnotification/models/yolov4/coco.names"
-
-**ZM box objectconfig.yml** (URL mode -- server fetches frames from ZM):
-
-.. code-block:: yaml
-
-   ml:
-     ml_sequence:
-       general:
-         model_sequence: "object"
-         ml_gateway: "http://192.168.1.100:5000"
-         ml_gateway_mode: "url"
+         # ml_gateway_mode: "image"   # uncomment if server can't reach ZM directly
          ml_fallback_local: "yes"
        object:
          general:
@@ -174,9 +157,9 @@ Or with specific models and auth:
            - object_framework: opencv
              object_weights: "/var/lib/zmeventnotification/models/ultralytics/yolo11s.onnx"
 
-URL mode is useful when the GPU box has direct network access to ZoneMinder
-(same LAN or VPN). The server fetches frames directly from ZM, avoiding
-double transfer through the client.
+By default, URL mode is used -- the server fetches frames directly from ZM.
+Set ``ml_gateway_mode: "image"`` if the server cannot reach ZoneMinder
+(the client will JPEG-encode and upload frames instead).
 
 
 Available models
@@ -334,68 +317,40 @@ All fields correspond to ``ServerConfig`` attributes. When using
 Client usage
 -------------
 
-Image mode (default)
-~~~~~~~~~~~~~~~~~~~~~
-
 Using the ``Detector`` API:
 
 .. code-block:: python
 
    from pyzm import Detector
 
+   # URL mode (default) -- server fetches frames from ZM
    detector = Detector(models=["yolo11s"], gateway="http://gpu-box:5000")
-   result = detector.detect("/path/to/image.jpg")
 
+   # Image mode -- client uploads JPEG-encoded frames
+   # detector = Detector(models=["yolo11s"], gateway="http://gpu-box:5000",
+   #                     gateway_mode="image")
+
+   # With authentication:
+   # detector = Detector(models=["yolo11s"], gateway="http://gpu-box:5000",
+   #                     gateway_username="admin", gateway_password="secret")
+
+   # detect() always uploads the image (single-image mode)
+   result = detector.detect("/path/to/image.jpg")
    print(result.summary)
 
-The ``Detector`` JPEG-encodes the image and sends it to the server.
-The response is deserialized into a standard ``DetectionResult``.
-
-With authentication:
-
-.. code-block:: python
-
-   detector = Detector(
-       models=["yolo11s"],
-       gateway="http://gpu-box:5000",
-       gateway_username="admin",
-       gateway_password="secret",
-   )
-
-URL mode
-~~~~~~~~~
-
-When ``gateway_mode="url"`` is set, ``detect_event()`` sends frame URLs
-to the server instead of uploading JPEG data. The server fetches images
-directly from ZoneMinder using the provided auth token:
-
-.. code-block:: python
-
-   detector = Detector(
-       models=["yolo11s"],
-       gateway="http://gpu-box:5000",
-       gateway_mode="url",
-   )
-
-   # detect_event() builds ZM frame URLs and POSTs them to /detect_urls
+   # detect_event() uses URL mode by default -- sends frame URLs,
+   # server fetches them directly from ZM
    result = detector.detect_event(zm_client, event_id=12345,
                                    stream_config=stream_cfg)
 
 URL mode only applies to ``detect_event()`` calls.  Single-image
-``detect()`` calls always use image mode regardless of this setting.
-
-This is useful when:
-
-- The server has faster or more direct network access to ZoneMinder
-- You want to avoid transferring every frame through the client
-- The client machine has limited upload bandwidth
+``detect()`` calls always upload the image regardless of this setting.
 
 Using ``from_dict()``
 ~~~~~~~~~~~~~~~~~~~~~~
 
 The ``ml_gateway`` key in the ``general`` section of ``ml_options``
-automatically enables remote mode.  Set ``ml_gateway_mode`` to ``"url"``
-to use URL mode:
+automatically enables remote mode:
 
 .. code-block:: python
 
@@ -403,7 +358,7 @@ to use URL mode:
        "general": {
            "model_sequence": "object",
            "ml_gateway": "http://gpu-box:5000",
-           "ml_gateway_mode": "url",        # "image" (default) or "url"
+           # "ml_gateway_mode": "image",  # uncomment if server can't reach ZM
            # "ml_user": "admin",
            # "ml_password": "secret",
        },
@@ -534,7 +489,7 @@ in ``objectconfig.yml``:
      general:
        model_sequence: "object"
        ml_gateway: "http://gpu-box:5000"
-       ml_gateway_mode: "url"            # "image" (default) or "url"
+       # ml_gateway_mode: "image"        # uncomment if server can't reach ZM
        ml_user: "admin"
        ml_password: "secret"
        ml_fallback_local: yes
@@ -548,10 +503,7 @@ in ``objectconfig.yml``:
            object_labels: /path/to/coco.names
 
 When ``ml_gateway`` is set, detection requests are sent to the remote
-server. If ``ml_fallback_local`` is ``yes`` and the remote server is
-unreachable, detection falls back to local inference using the
-configured model sequence.
-
-Set ``ml_gateway_mode`` to ``url`` when the GPU box has direct access
-to ZoneMinder. In this mode, the client sends frame URLs instead of
-uploading JPEG data, and the server fetches images directly from ZM.
+server.  URL mode is the default -- the server fetches frames directly
+from ZM.  Set ``ml_gateway_mode: "image"`` if the server cannot reach
+ZoneMinder.  If ``ml_fallback_local`` is ``yes`` and the remote server
+is unreachable, detection falls back to local inference.

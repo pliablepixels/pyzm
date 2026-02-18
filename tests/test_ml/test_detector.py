@@ -711,13 +711,13 @@ class TestDetectorRemoteMode:
         from pyzm.ml.detector import Detector
 
         det = Detector(models=["yolov4"], gateway="http://gpu:5000")
-        assert det._gateway_mode == "image"
+        assert det._gateway_mode == "url"
 
-    def test_init_gateway_mode_url(self):
+    def test_init_gateway_mode_image(self):
         from pyzm.ml.detector import Detector
 
-        det = Detector(models=["yolov4"], gateway="http://gpu:5000", gateway_mode="url")
-        assert det._gateway_mode == "url"
+        det = Detector(models=["yolov4"], gateway="http://gpu:5000", gateway_mode="image")
+        assert det._gateway_mode == "image"
 
     def test_from_dict_picks_up_ml_gateway_mode(self):
         from pyzm.ml.detector import Detector
@@ -737,7 +737,7 @@ class TestDetectorRemoteMode:
         det = Detector.from_dict(ml_options)
         assert det._gateway_mode == "url"
 
-    def test_from_dict_gateway_mode_defaults_to_image(self):
+    def test_from_dict_gateway_mode_defaults_to_url(self):
         from pyzm.ml.detector import Detector
 
         ml_options = {
@@ -752,7 +752,7 @@ class TestDetectorRemoteMode:
             },
         }
         det = Detector.from_dict(ml_options)
-        assert det._gateway_mode == "image"
+        assert det._gateway_mode == "url"
 
     @patch("pyzm.ml.detector.Detector._remote_detect_urls")
     def test_detect_event_url_mode(self, mock_remote_urls):

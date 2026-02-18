@@ -35,10 +35,10 @@ sequences the configured backends, applies match strategies, and runs
 post-detection filters.
 
 When ``gateway`` is set, ``Detector`` skips local inference and sends
-images to a remote ``pyzm.serve`` server instead.  With
-``gateway_mode="url"``, ``detect_event()`` sends frame URLs to the
-server and the server fetches images directly from ZoneMinder (see the
-:doc:`serve guide </guide/serve>`).
+requests to a remote ``pyzm.serve`` server instead.  By default (URL
+mode), ``detect_event()`` sends frame URLs and the server fetches
+images directly from ZoneMinder.  Set ``gateway_mode="image"`` if the
+server cannot reach ZM (see the :doc:`serve guide </guide/serve>`).
 
 
 Configuration

@@ -205,9 +205,9 @@ class Detector:
         When set, ``detect()`` sends images to the remote server instead
         of running inference locally.
     gateway_mode:
-        ``"image"`` (default) sends JPEG-encoded frames to the server.
-        ``"url"`` sends frame URLs so the server fetches images directly
-        from ZoneMinder.  Only applies to ``detect_event()``; single-image
+        ``"url"`` (default) sends frame URLs so the server fetches images
+        directly from ZoneMinder.  ``"image"`` sends JPEG-encoded frames
+        instead.  Only applies to ``detect_event()``; single-image
         ``detect()`` calls always use image mode.
     gateway_timeout:
         HTTP timeout in seconds for remote detection requests.
@@ -225,7 +225,7 @@ class Detector:
         processor: str | Processor = Processor.CPU,
         *,
         gateway: str | None = None,
-        gateway_mode: str = "image",
+        gateway_mode: str = "url",
         gateway_timeout: int = 60,
         gateway_username: str | None = None,
         gateway_password: str | None = None,
@@ -588,7 +588,7 @@ class Detector:
         return cls(
             config=detector_config,
             gateway=general.get("ml_gateway"),
-            gateway_mode=general.get("ml_gateway_mode", "image"),
+            gateway_mode=general.get("ml_gateway_mode", "url"),
             gateway_username=general.get("ml_user"),
             gateway_password=general.get("ml_password"),
             gateway_timeout=int(general.get("ml_timeout", 60)),
