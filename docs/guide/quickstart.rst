@@ -1,414 +1,43 @@
-Getting Started
-===============
+Quick Start
+===========
 
-This guide walks through the core features of pyzm v2:
-connecting to ZoneMinder, running ML detection, and working with results.
+Install pyzm (add ``[ml]`` if you need ML detection):
 
-Connecting to ZoneMinder
--------------------------
+.. code-block:: bash
+
+   pip install pyzm          # ZM API only
+   pip install "pyzm[ml]"    # ZM API + ML detection
+
+Connect to ZoneMinder and list monitors:
 
 .. code-block:: python
 
    from pyzm import ZMClient
 
-   zm = ZMClient(
-       api_url="https://zm.example.com/zm/api",
-       user="admin",
-       password="secret",
-       # verify_ssl=False,  # for self-signed certs
-   )
-
-   print(f"ZM {zm.zm_version}, API {zm.api_version}")
-
-``api_url`` must be the full ZM API URL (ending in ``/api``).
-
-Listing monitors
-~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   for m in zm.monitors():
-       print(f"Monitor {m.id}: {m.name} ({m.function}) {m.width}x{m.height}")
-
-   # Single monitor
-   m = zm.monitor(1)
-
-``monitors()`` returns ``list[Monitor]``. Results are cached after the first
-call; pass ``force_reload=True`` to refresh.
-
-Querying events
-~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   # Events from the last hour
-   events = zm.events(since="1 hour ago", limit=5)
-   for ev in events:
-       print(f"Event {ev.id}: {ev.cause} ({ev.length:.1f}s, {ev.alarm_frames} alarm frames)")
-
-   # Single event
-   ev = zm.event(12345)
-
-Filters: ``event_id``, ``monitor_id``, ``since``, ``until``,
-``min_alarm_frames``, ``object_only``, ``limit``.
-
-Per-frame metadata
-~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   ev = zm.event(12345)
-   frames = ev.get_frames()
-   for f in frames:
-       print(f"Frame {f.frame_id}: type={f.type} score={f.score} delta={f.delta:.2f}s")
-
-   # Find the highest-scoring frame
-   best = max(frames, key=lambda f: f.score)
-   print(f"Best frame: {best.frame_id} (score={best.score})")
-
-``get_frames()`` returns ``list[Frame]`` with per-frame ``Score``,
-``Type`` (Normal/Alarm/Bulk), and ``Delta`` (seconds since event start).
-
-Getting zones
-~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   m = zm.monitor(1)
-   zones = m.get_zones()
-   for z in zones:
-       print(f"{z.name}: {len(z.points)} points, pattern={z.pattern}")
-
-Zones are used by the ML detector for region-based filtering.
-
-Accessing the full API response
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-pyzm models only extract a subset of the fields returned by the ZM API.
-Every API-sourced object carries a ``raw()`` method that returns the full,
-unmodified API response dict — useful for accessing fields like ``Path``,
-``Protocol``, ``StorageId``, etc.:
-
-.. code-block:: python
-
-   m = zm.monitor(1)
-   m.raw()["Monitor"]["Path"]        # e.g. "rtsp://cam/stream"
-   m.raw()["Monitor"]["Protocol"]    # e.g. "rtsp"
-   m.status.raw()                    # full Monitor_Status sub-dict
-
-   ev = zm.event(12345)
-   ev.raw()["Event"]["DiskSpace"]    # field not on the Event dataclass
-
-   frames = ev.get_frames()
-   frames[0].raw()                   # full Frame API dict
-
-   zones = m.get_zones()
-   zones[0].raw()                    # full Zone API dict including AlarmRGB, etc.
-
-``raw()`` is available on ``Monitor``, ``MonitorStatus``, ``Event``,
-``Frame``, ``Zone``, and ``PTZCapabilities``.
-
-Monitor control
-~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   m = zm.monitor(1)
-
-   # Alarm control
-   m.arm()                              # trigger alarm
-   m.disarm()                           # cancel alarm
-   status = m.alarm_status()            # check alarm state
-
-   # Update monitor settings
-   m.update(Function="Modect", Enabled="1")
-
-   # Daemon status
-   m.daemon_status()                    # capture daemon (zmc) status
-
-Streaming & snapshot URLs
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   m = zm.monitor(1)
-
-   # MJPEG stream
-   url = m.streaming_url()                           # protocol=mjpeg (default)
-   url = m.streaming_url(maxfps=5, scale=50)         # with extra params
-
-   # Single-frame snapshot
-   url = m.snapshot_url()                            # mode=single
-   url = m.snapshot_url(scale=50)
-
-Both URLs are built from the portal URL and ``ZM_PATH_ZMS`` config, with
-automatic path deduplication (e.g. ``/zm`` won't be doubled).
-
-PTZ control
-~~~~~~~~~~~~
-
-.. code-block:: python
-
-   m = zm.monitor("FrontDoor (Video)")
-
-   if m.controllable:
-       # Query what the camera can do
-       caps = m.ptz_capabilities()
-       print(caps.can_move_con, caps.can_zoom, caps.has_presets)
-
-       # Simple commands — defaults to continuous mode
-       m.ptz("up")
-       m.ptz("stop")
-       m.ptz("zoom_in")
-
-       # Move for 2 seconds then auto-stop
-       m.ptz("right", stop_after=2.0)
-
-       # Relative or absolute mode
-       m.ptz("left", mode="rel")
-
-       # Presets
-       m.ptz("home")
-       m.ptz("preset", preset=3)
-
-Supported commands: ``up``, ``down``, ``left``, ``right``, ``up_left``,
-``up_right``, ``down_left``, ``down_right``, ``zoom_in``, ``zoom_out``,
-``stop``, ``home``, ``preset``.
-
-Modes: ``con`` (continuous, default), ``rel`` (relative), ``abs`` (absolute).
-
-Event management
-~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   # Delete a single event
-   ev = zm.event(12345)
-   ev.delete()
-
-   # Bulk delete events matching filters
-   count = zm.delete_events(monitor_id=1, before="7 days ago", limit=500)
-   print(f"Deleted {count} events")
-
-   # OOP: query events scoped to a monitor
-   m = zm.monitor(1)
-   recent = m.events(until="6 hours ago", limit=10)
-
-   # OOP: bulk-delete old events for a monitor
-   count = m.delete_events(before="1 week ago", limit=500)
-   print(f"Deleted {count} events from {m.name}")
-
-System health
-~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   zm.is_running()          # True if ZM daemon is running
-   zm.system_load()         # {"1min": 0.5, "5min": 0.3, "15min": 0.2}
-   zm.disk_usage()          # disk percent info from ZM
-   zm.timezone()            # e.g. "America/New_York"
-
-Configuration
-~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   # List all config parameters
-   all_configs = zm.configs()
-
-   # Get a single config by name
-   cfg = zm.config("ZM_LANG_DEFAULT")
-   print(cfg["Value"])
-
-   # Set a config value (system configs are read-only)
-   zm.set_config("ZM_LANG_DEFAULT", "en_us")
-
-States, servers, and storage
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   # List ZM states
-   for s in zm.states():
-       print(s["Name"])
-
-   # State control
-   zm.stop()                # stop ZM
-   zm.start()               # start ZM
-   zm.restart()             # restart ZM
-   zm.set_state("my_state") # switch to a named state
-
-   # Multi-server setups
-   zm.servers()             # list all ZM servers
-   zm.storage()             # list storage areas with disk usage
-
-
-Detecting objects in an image
-------------------------------
-
-.. note::
-
-   ML detection requires the ``[ml]`` extra: ``pip install "pyzm[ml]"``
-
-.. code-block:: python
-
-   from pyzm import Detector
-
-   detector = Detector(models=["yolo11s"])
-   result = detector.detect("/path/to/image.jpg")
-
-   if result.matched:
-       print(result.summary)  # "person:97% car:85%"
-
-``models`` accepts model name strings (resolved under ``base_path``) or
-explicit ``ModelConfig`` objects.
-
-Working with results
-~~~~~~~~~~~~~~~~~~~~~
-
-``detect()`` returns a ``DetectionResult``:
-
-.. code-block:: python
-
-   result.matched          # True if any detections
-   result.labels           # ["person", "car"]
-   result.confidences      # [0.97, 0.85]
-   result.boxes            # [[x1,y1,x2,y2], ...]
-   result.summary          # "person:97% car:85%"
-   result.frame_id         # which frame was selected
-   result.image_dimensions # {"original": (h,w), "resized": (rh,rw)}
-
-   # Individual detections
-   for det in result.detections:
-       print(f"{det.label}: {det.confidence:.0%}")
-       print(f"  bbox: ({det.bbox.x1},{det.bbox.y1})-({det.bbox.x2},{det.bbox.y2})")
-       print(f"  area: {det.bbox.area}, center: {det.bbox.center}")
-
-   # Annotate and save
-   annotated = result.annotate()
-   import cv2
-   cv2.imwrite("/tmp/detected.jpg", annotated)
-
-
-Detecting on a ZoneMinder event
----------------------------------
-
-.. code-block:: python
-
-   from pyzm import ZMClient, Detector, StreamConfig
-
    zm = ZMClient(api_url="https://zm.example.com/zm/api",
                   user="admin", password="secret")
-   detector = Detector(models=["yolo11s"])
 
-   m = zm.monitor(1)
-   zones = m.get_zones()
+   for m in zm.monitors():
+       print(f"{m.name}: {m.function} ({m.width}x{m.height})")
 
-   result = detector.detect_event(
-       zm,
-       event_id=12345,
-       zones=zones,
-       stream_config=StreamConfig(
-           frame_set=["snapshot", "alarm", "1"],
-           resize=800,
-       ),
-   )
-
-   if result.matched:
-       print(result.summary)
-       ev = zm.event(12345)
-       ev.update_notes(result.summary)
-
-``detect_event()`` extracts frames from the event (via the ZM API or
-local filesystem), runs each through the detection pipeline, and returns
-the best result based on the configured ``frame_strategy``.
-
-``StreamConfig`` controls which frames are extracted, resizing, retry
-behaviour, and more. See the :doc:`detection deep-dive </guide/detection>`
-for details.
-
-
-Loading from YAML config
---------------------------
-
-If you have an ``ml_sequence`` dict (from ``objectconfig.yml``):
+Detect objects in a local image:
 
 .. code-block:: python
-
-   ml_options = {
-       "general": {
-           "model_sequence": "object,face",
-       },
-       "object": {
-           "general": {"pattern": "(person|car)", "same_model_sequence_strategy": "first"},
-           "sequence": [
-               {
-                   "object_framework": "opencv",
-                   "object_weights": "/path/to/yolo11s.onnx",
-                   "object_labels": "/path/to/coco.names",
-                   "object_min_confidence": 0.5,
-               },
-           ],
-       },
-   }
-
-   detector = Detector.from_dict(ml_options)
-   result = detector.detect("/path/to/image.jpg")
-
-``from_dict()`` parses the nested dict format used by ``objectconfig.yml``
-and builds a fully typed ``DetectorConfig`` internally.
-
-
-Logging
---------
-
-All pyzm internals log to the ``"pyzm"`` stdlib logger.  How you
-configure it depends on whether you are using ZoneMinder or not.
-
-Standalone (ML only, no ZoneMinder)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If you only use pyzm for ML detection (no ZM), configure the ``"pyzm"``
-logger with stdlib ``logging``:
-
-.. code-block:: python
-
-   import logging
-
-   logging.basicConfig(level=logging.DEBUG)          # quick & simple
-
-   # — or — configure just the pyzm logger:
-   pyzm_logger = logging.getLogger("pyzm")
-   pyzm_logger.setLevel(logging.DEBUG)
-   pyzm_logger.addHandler(logging.StreamHandler())   # print to console
 
    from pyzm import Detector
+
    detector = Detector(models=["yolo11s"])
-   result = detector.detect("/path/to/image.jpg")    # logs appear on console
+   result = detector.detect("/path/to/image.jpg")
 
-With ZoneMinder
-~~~~~~~~~~~~~~~~
+   if result.matched:
+       print(result.summary)   # "person:97% car:85%"
 
-On a ZoneMinder host, ``setup_zm_logging()`` reads ``zm.conf``, the DB
-``Config`` table, and environment variables, then writes to ZM's log file,
-database, and syslog using the same format as Perl's ``Logger.pm``:
+Next steps
+----------
 
-.. code-block:: python
-
-   from pyzm.log import setup_zm_logging
-
-   adapter = setup_zm_logging(name="myapp")
-   adapter.Info("Hello from pyzm")
-   adapter.Debug(1, "Verbose detail")
-
-   # Override log levels or enable console output
-   adapter = setup_zm_logging(name="myapp", override={
-       "dump_console": True,
-       "log_debug": True,
-       "log_level_debug": 5,
-   })
-
-``setup_zm_logging()`` returns a :class:`ZMLogAdapter` that provides
-``Debug``, ``Info``, ``Warning``, ``Error``, and ``Fatal`` methods
-matching the legacy pyzm API.  All pyzm library internals automatically
-share the same log handlers via the ``"pyzm"`` logger.
+- :doc:`zm_client` -- connecting, authentication, and client options
+- :doc:`zm_monitors` -- monitors, zones, PTZ, streaming URLs
+- :doc:`zm_events` -- querying events, frames, bulk operations
+- :doc:`zm_system` -- system health, configuration, states
+- :doc:`logging` -- configuring pyzm logging (standalone and ZM)
+- :doc:`detection` -- ML detection pipeline, backends, and config

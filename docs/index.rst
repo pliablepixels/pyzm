@@ -40,13 +40,33 @@ Quick example
 
 .. toctree::
    :maxdepth: 2
-   :caption: User Guide
+   :caption: Getting Started
 
    guide/installation
    guide/quickstart
+
+.. toctree::
+   :maxdepth: 2
+   :caption: ZoneMinder API
+
+   guide/zm_client
+   guide/zm_monitors
+   guide/zm_events
+   guide/zm_system
+   guide/logging
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Machine Learning
+
    guide/detection
    guide/serve
    guide/training
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Testing
+
    guide/testing
 
 .. toctree::

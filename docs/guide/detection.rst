@@ -1,12 +1,121 @@
-ML Detection Deep-Dive
-======================
+Detection
+==========
 
 .. note::
 
    This module requires the ``[ml]`` extra: ``pip install "pyzm[ml]"``
 
-This guide covers the architecture and configuration of pyzm's ML
-detection pipeline in detail.
+
+Basic usage
+------------
+
+Detecting objects in an image
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from pyzm import Detector
+
+   detector = Detector(models=["yolo11s"])
+   result = detector.detect("/path/to/image.jpg")
+
+   if result.matched:
+       print(result.summary)  # "person:97% car:85%"
+
+``models`` accepts model name strings (resolved under ``base_path``) or
+explicit ``ModelConfig`` objects.
+
+Working with results
+~~~~~~~~~~~~~~~~~~~~~
+
+``detect()`` returns a ``DetectionResult``:
+
+.. code-block:: python
+
+   result.matched          # True if any detections
+   result.labels           # ["person", "car"]
+   result.confidences      # [0.97, 0.85]
+   result.boxes            # [[x1,y1,x2,y2], ...]
+   result.summary          # "person:97% car:85%"
+   result.frame_id         # which frame was selected
+   result.image_dimensions # {"original": (h,w), "resized": (rh,rw)}
+
+   # Individual detections
+   for det in result.detections:
+       print(f"{det.label}: {det.confidence:.0%}")
+       print(f"  bbox: ({det.bbox.x1},{det.bbox.y1})-({det.bbox.x2},{det.bbox.y2})")
+       print(f"  area: {det.bbox.area}, center: {det.bbox.center}")
+
+   # Annotate and save
+   annotated = result.annotate()
+   import cv2
+   cv2.imwrite("/tmp/detected.jpg", annotated)
+
+Detecting on a ZoneMinder event
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from pyzm import ZMClient, Detector, StreamConfig
+
+   zm = ZMClient(api_url="https://zm.example.com/zm/api",
+                  user="admin", password="secret")
+   detector = Detector(models=["yolo11s"])
+
+   m = zm.monitor(1)
+   zones = m.get_zones()
+
+   result = detector.detect_event(
+       zm,
+       event_id=12345,
+       zones=zones,
+       stream_config=StreamConfig(
+           frame_set=["snapshot", "alarm", "1"],
+           resize=800,
+       ),
+   )
+
+   if result.matched:
+       print(result.summary)
+       ev = zm.event(12345)
+       ev.update_notes(result.summary)
+
+``detect_event()`` extracts frames from the event (via the ZM API or
+local filesystem), runs each through the detection pipeline, and returns
+the best result based on the configured ``frame_strategy``.
+
+``StreamConfig`` controls which frames are extracted, resizing, retry
+behaviour, and more.  See `StreamConfig`_ below for details.
+
+Loading from YAML config
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you have an ``ml_sequence`` dict (from ``objectconfig.yml``):
+
+.. code-block:: python
+
+   ml_options = {
+       "general": {
+           "model_sequence": "object,face",
+       },
+       "object": {
+           "general": {"pattern": "(person|car)", "same_model_sequence_strategy": "first"},
+           "sequence": [
+               {
+                   "object_framework": "opencv",
+                   "object_weights": "/path/to/yolo11s.onnx",
+                   "object_labels": "/path/to/coco.names",
+                   "object_min_confidence": 0.5,
+               },
+           ],
+       },
+   }
+
+   detector = Detector.from_dict(ml_options)
+   result = detector.detect("/path/to/image.jpg")
+
+``from_dict()`` parses the nested dict format used by ``objectconfig.yml``
+and builds a fully typed ``DetectorConfig`` internally.
 
 
 Architecture overview
