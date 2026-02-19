@@ -3,10 +3,30 @@
 All notable changes to this project will be documented in this file.
 
 
+## [2.1.2] - 2026-02-19
+
+### Bug Fixes
+
+- read version dynamically from pyzm.__version__ in conf.py ([7d349a0](https://github.com/pliablepixels/pyzm/commit/7d349a0e00af8d1e23b9d31000a06c232d6c9e1d))
+
+### Documentation
+
+- added documentation notes and es reliance ([771a931](https://github.com/pliablepixels/pyzm/commit/771a931cbc1cc2a62f666988c34a57adc583072e))
+- fix inaccuracies and gaps across documentation ([8af47cc](https://github.com/pliablepixels/pyzm/commit/8af47cc74c4ab13dfbbc699f3c7cba3fe62dfa62))
+
+### Features
+
+- add raw() method to all ZM API model objects ([ba77844](https://github.com/pliablepixels/pyzm/commit/ba77844a3a20915fca6050636257fe6558dc8229))
+
+### Miscellaneous
+
+- bump version to v2.1.2 ([a752740](https://github.com/pliablepixels/pyzm/commit/a7527402ee5f13f36b98283c97823d5a1b76ebfc))
+
 ## [2.1.1] - 2026-02-18
 
 ### Documentation
 
+- update CHANGELOG for v2.1.1 ([0fd7981](https://github.com/pliablepixels/pyzm/commit/0fd7981d5238f01b2a03be6bb44ff26d97873ac9))
 - fix remote.py docstring to show URL mode as default ([312e667](https://github.com/pliablepixels/pyzm/commit/312e667726d8a81636e8af036b0bf2d289a6b758))
 - add RTD links to all examples ([3e7e455](https://github.com/pliablepixels/pyzm/commit/3e7e455d2edf1f812d1c4e0e5137f2052a6a037d))
 - simplify examples, add URL mode to remote.py ([3110ec1](https://github.com/pliablepixels/pyzm/commit/3110ec17de45bbb5d939f39b782200ff657d4208))
