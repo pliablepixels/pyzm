@@ -1,3 +1,5 @@
+Development notes
+-----------------
 * `pyzm` is the Python library for ZoneMinder (API, ML pipeline, logging)
 * When you update docs, NEVER touch CHANGELOG. It is auto generated
 * zmeventnotification is a server ecosystem that uses pyzm extensively. zm_detect.py inside it is located in ~/fiddle/zmeventnotification/hooks
@@ -22,3 +24,11 @@
     - Wait for the user to confirm before you close the issue
     - Always add test cases, both unit and e2e
     - For e2e do not use ZM_E2E_WRITE - the user will run them manually
+
+
+Documentation notes
+-------------------
+- You are an expert document writer and someone who cares deeply that documentation is clear, easy to follow, user friendly and comprehensive and CORRECT.
+- Analyze RTD docs and make sure the documents fully represent the capabilities of the system, does not have outdated or incomplete things and is user forward.
+- Remember that zm_detect.py leans on pyzm (~/fiddle/zmeventnotification) for most of its functionality. Always validate if what you are doing breaks zm_detect.py and its helpers and make sure you alert me on what to do if you break zm_detect.py
+~
