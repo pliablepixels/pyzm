@@ -109,7 +109,7 @@ GITHUB_TOKEN=$(gh auth token) git-cliff --tag "v2.0.3"
 
 Limitations
 ============
-* Only for Python3
+* Requires Python 3.10+
 
 
 

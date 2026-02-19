@@ -279,6 +279,9 @@ CLI options
    * - ``--token-secret``
      - ``change-me``
      - Secret key used to sign JWT tokens. **Change this in production.**
+   * - ``--debug``
+     - off
+     - Enable debug logging for both pyzm and uvicorn
    * - ``--config``
      - (none)
      - Path to a YAML config file (``ServerConfig``). Overrides CLI flags.
@@ -398,7 +401,8 @@ Manual flow:
        -H "Authorization: Bearer $TOKEN" \
        -F file=@/path/to/image.jpg
 
-Tokens expire after ``--token-expiry`` seconds (default 3600).
+Tokens expire after ``token_expiry_seconds`` (default 3600), configurable
+via the YAML config file.
 
 
 API reference
@@ -464,13 +468,15 @@ Run detection on images fetched from URLs (URL mode).
 - **Returns:** ``DetectionResult`` as JSON (best frame selected by ``frame_strategy``)
 
 The server appends ``zm_auth`` to each URL and fetches the image via HTTP GET.
-Frame strategy (``first``, ``most``, ``most_unique``, ``most_models``)
+Frame strategy (``first``, ``first_new``, ``most``, ``most_unique``, ``most_models``)
 is applied server-side to pick the best result.
 
 ``POST /login``
 ~~~~~~~~~~~~~~~~
 
-Obtain a JWT token (only available when ``--auth`` is enabled).
+Obtain a JWT token. This endpoint is always registered, even when
+``--auth`` is not enabled (so clients with pre-configured credentials
+don't get a 404). When auth is disabled, any credentials are accepted.
 
 - **Content-Type:** ``application/json``
 - **Body:** ``{"username": "...", "password": "..."}``

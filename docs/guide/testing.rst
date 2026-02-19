@@ -42,7 +42,7 @@ objectconfig feature using real YOLO models and a real test image
   (at least one YOLO model, e.g. ``yolov4/``)
 - Python packages: ``opencv-python``, ``numpy``, ``shapely``
 - For remote-serve tests: ``fastapi``, ``uvicorn``, ``requests``,
-  ``python-jose``, ``passlib``
+  ``PyJWT``
 
 **Run all ML e2e tests:**
 

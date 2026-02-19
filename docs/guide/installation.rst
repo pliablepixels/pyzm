@@ -45,7 +45,7 @@ installer):
 .. code-block:: bash
 
    # Everything (ZM + ML + detection server + training UI):
-   sudo /opt/zoneminder/venv/bin/pip install "pyzm[ml,serve,train]"
+   sudo /opt/zoneminder/venv/bin/pip install "pyzm[full]"
 
    # ML detection + remote server:
    sudo /opt/zoneminder/venv/bin/pip install "pyzm[ml,serve]"
@@ -71,7 +71,7 @@ OpenCV shim, and ownership in one step.
    cd pyzm
 
    # Everything (ZM + ML + detection server + training UI):
-   sudo ./scripts/setup_venv.sh --extras ml,serve,train
+   sudo ./scripts/setup_venv.sh --extras full
 
    # ML detection + remote server:
    sudo ./scripts/setup_venv.sh --extras ml,serve
@@ -116,6 +116,8 @@ What each extra installs
      - ``[ml]`` deps + fastapi, uvicorn, python-multipart, PyJWT, PyYAML
    * - ``[train]``
      - ``[ml]`` deps + ultralytics, streamlit, streamlit-drawable-canvas, st-clickable-images, PyYAML
+   * - ``[full]``
+     - All of the above (``[ml]`` + ``[serve]`` + ``[train]``)
 
 .. note::
 

@@ -453,7 +453,7 @@ Detection
    det.confidence      # float
    det.bbox            # BBox
    det.model_name      # str
-   det.detection_type  # str ("object", "face", "alpr")
+   det.detection_type  # str ("object", "face", "alpr", "audio")
 
 BBox
 ~~~~~

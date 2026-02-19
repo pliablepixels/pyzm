@@ -1,5 +1,8 @@
 * `pyzm` is the Python library for ZoneMinder (API, ML pipeline, logging)
 * When you update docs, NEVER touch CHANGELOG. It is auto generated
+* zmeventnotification is a server ecosystem that uses pyzm extensively. zm_detect.py inside it is located in ~/fiddle/zmeventnotification/hooks
+* Any time you make changes to pyzm, always validate that zm_detect.py is up to date and doesn't break
+* When bumping up pyzm versions, make sure to modify setup.py in zmeventnotification/hooks to include that version number 
 * To run tests: `pytest tests/`
 * If you need to access DB, configs etc, access it as `sudo -u www-data`
 * Follow DRY principles for coding

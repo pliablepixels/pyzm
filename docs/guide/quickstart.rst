@@ -134,7 +134,7 @@ Streaming & snapshot URLs
    m = zm.monitor(1)
 
    # MJPEG stream
-   url = m.streaming_url()                           # mode=jpeg
+   url = m.streaming_url()                           # protocol=mjpeg (default)
    url = m.streaming_url(maxfps=5, scale=50)         # with extra params
 
    # Single-frame snapshot
