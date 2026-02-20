@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 
 
+## [2.1.3] - 2026-02-20
+
+### Bug Fixes
+
+- auto-detect movement mode from control profile capabilities ([55778ca](https://github.com/pliablepixels/pyzm/commit/55778ca9656094f389b2706db4aeefed015d99b9))
+- read version from file to avoid pydantic import on RTD ([a559941](https://github.com/pliablepixels/pyzm/commit/a5599411b60924c4c93f3452eeb01f3ac40ad9d2))
+
+### Documentation
+
+- restructure sidebar into Getting Started, ZM API, and ML sections ([f5665d1](https://github.com/pliablepixels/pyzm/commit/f5665d19e68fee42f41edb0003579cd57dd5cc49))
+
+### Miscellaneous
+
+- ver bump ([a4a1c8f](https://github.com/pliablepixels/pyzm/commit/a4a1c8f764a8d27d2af05a1f8a5d7122fa2e6b6d))
+
 ## [2.1.2] - 2026-02-19
 
 ### Bug Fixes
@@ -11,6 +26,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- update CHANGELOG for v2.1.2 ([0bb5f2e](https://github.com/pliablepixels/pyzm/commit/0bb5f2eef12da0c00c791ca6069c6ee129a545e3))
 - added documentation notes and es reliance ([771a931](https://github.com/pliablepixels/pyzm/commit/771a931cbc1cc2a62f666988c34a57adc583072e))
 - fix inaccuracies and gaps across documentation ([8af47cc](https://github.com/pliablepixels/pyzm/commit/8af47cc74c4ab13dfbbc699f3c7cba3fe62dfa62))
 
