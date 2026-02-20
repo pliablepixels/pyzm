@@ -50,6 +50,17 @@ def _sample_monitor_api_data(
     }
 
 
+def _sample_control_data(**overrides):
+    """Return a control profile API response dict."""
+    defaults = {
+        "CanMove": "1", "CanMoveCon": "1", "CanMoveRel": "0", "CanMoveAbs": "0",
+        "CanZoom": "1", "CanZoomCon": "1", "CanZoomRel": "0", "CanZoomAbs": "0",
+        "HasPresets": "0", "NumPresets": "0", "HasHomePreset": "0",
+    }
+    defaults.update(overrides)
+    return {"control": {"Control": defaults}}
+
+
 def _sample_event_api_data(eid=12345, name="Event 12345", monitor_id=1):
     return {
         "Event": {
@@ -671,12 +682,13 @@ class TestMonitorPTZ:
 
     @patch("pyzm.client.ZMAPI")
     def test_ptz_command_up(self, mock_zmapi_cls):
-        """ptz('up') sends moveConUp to portal."""
+        """ptz('up') auto-detects con mode and sends moveConUp to portal."""
         mock_api = _make_mock_api()
         mock_api.portal_url = "https://zm.example.com/zm"
-        mock_api.get.return_value = {
-            "monitors": [_sample_monitor_api_data(5, "PTZ Cam", controllable="1", control_id=3)]
-        }
+        mock_api.get.side_effect = [
+            {"monitors": [_sample_monitor_api_data(5, "PTZ Cam", controllable="1", control_id=3)]},
+            _sample_control_data(CanMoveCon="1", CanMoveRel="0"),
+        ]
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
@@ -713,12 +725,13 @@ class TestMonitorPTZ:
 
     @patch("pyzm.client.ZMAPI")
     def test_ptz_zoom_in(self, mock_zmapi_cls):
-        """ptz('zoom_in') sends zoomConTele."""
+        """ptz('zoom_in') auto-detects con mode and sends zoomConTele."""
         mock_api = _make_mock_api()
         mock_api.portal_url = "https://zm.example.com/zm"
-        mock_api.get.return_value = {
-            "monitors": [_sample_monitor_api_data(5, "PTZ Cam", controllable="1", control_id=3)]
-        }
+        mock_api.get.side_effect = [
+            {"monitors": [_sample_monitor_api_data(5, "PTZ Cam", controllable="1", control_id=3)]},
+            _sample_control_data(CanZoomCon="1", CanZoomRel="0"),
+        ]
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
@@ -790,12 +803,13 @@ class TestMonitorPTZ:
     @patch("pyzm.client.time")
     @patch("pyzm.client.ZMAPI")
     def test_ptz_stop_after(self, mock_zmapi_cls, mock_time):
-        """ptz('up', stop_after=2) sends moveConUp then moveStop after sleep."""
+        """ptz('up', stop_after=2) auto-detects con then sends moveConUp + moveStop."""
         mock_api = _make_mock_api()
         mock_api.portal_url = "https://zm.example.com/zm"
-        mock_api.get.return_value = {
-            "monitors": [_sample_monitor_api_data(5, "PTZ Cam", controllable="1", control_id=3)]
-        }
+        mock_api.get.side_effect = [
+            {"monitors": [_sample_monitor_api_data(5, "PTZ Cam", controllable="1", control_id=3)]},
+            _sample_control_data(CanMoveCon="1"),
+        ]
         mock_zmapi_cls.return_value = mock_api
 
         from pyzm.client import ZMClient
@@ -851,6 +865,88 @@ class TestMonitorPTZ:
         m = Monitor(id=1, name="Test")
         with pytest.raises(RuntimeError, match="not bound"):
             m.ptz_capabilities()
+
+    @patch("pyzm.client.ZMAPI")
+    def test_ptz_auto_selects_rel_when_con_unsupported(self, mock_zmapi_cls):
+        """ptz('left') auto-selects rel mode when con is not supported."""
+        mock_api = _make_mock_api()
+        mock_api.portal_url = "https://zm.example.com/zm"
+        mock_api.get.side_effect = [
+            {"monitors": [_sample_monitor_api_data(5, "PTZ Cam", controllable="1", control_id=3)]},
+            _sample_control_data(CanMoveCon="0", CanMoveRel="1"),
+        ]
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(api_url="https://zm.example.com/zm/api")
+
+        m = client.monitor(5)
+        m.ptz("left")
+
+        params = mock_api.request.call_args[1].get("params") or mock_api.request.call_args[0][1]
+        assert params["control"] == "moveRelLeft"
+
+    @patch("pyzm.client.ZMAPI")
+    def test_ptz_auto_selects_abs_as_last_resort(self, mock_zmapi_cls):
+        """ptz('up') auto-selects abs mode when con and rel are unsupported."""
+        mock_api = _make_mock_api()
+        mock_api.portal_url = "https://zm.example.com/zm"
+        mock_api.get.side_effect = [
+            {"monitors": [_sample_monitor_api_data(5, "PTZ Cam", controllable="1", control_id=3)]},
+            _sample_control_data(CanMoveCon="0", CanMoveRel="0", CanMoveAbs="1"),
+        ]
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(api_url="https://zm.example.com/zm/api")
+
+        m = client.monitor(5)
+        m.ptz("up")
+
+        params = mock_api.request.call_args[1].get("params") or mock_api.request.call_args[0][1]
+        assert params["control"] == "moveAbsUp"
+
+    @patch("pyzm.client.ZMAPI")
+    def test_ptz_auto_zoom_selects_rel(self, mock_zmapi_cls):
+        """ptz('zoom_in') auto-selects rel when zoom con unsupported."""
+        mock_api = _make_mock_api()
+        mock_api.portal_url = "https://zm.example.com/zm"
+        mock_api.get.side_effect = [
+            {"monitors": [_sample_monitor_api_data(5, "PTZ Cam", controllable="1", control_id=3)]},
+            _sample_control_data(CanZoomCon="0", CanZoomRel="1"),
+        ]
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(api_url="https://zm.example.com/zm/api")
+
+        m = client.monitor(5)
+        m.ptz("zoom_in")
+
+        params = mock_api.request.call_args[1].get("params") or mock_api.request.call_args[0][1]
+        assert params["control"] == "zoomRelTele"
+
+    @patch("pyzm.client.ZMAPI")
+    def test_ptz_auto_caches_capabilities(self, mock_zmapi_cls):
+        """Auto-mode fetches capabilities once and caches for subsequent calls."""
+        mock_api = _make_mock_api()
+        mock_api.portal_url = "https://zm.example.com/zm"
+        mock_api.get.side_effect = [
+            {"monitors": [_sample_monitor_api_data(5, "PTZ Cam", controllable="1", control_id=3)]},
+            _sample_control_data(CanMoveCon="0", CanMoveRel="1"),
+        ]
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(api_url="https://zm.example.com/zm/api")
+
+        m = client.monitor(5)
+        m.ptz("left")
+        m.ptz("right")
+
+        # get called twice: once for monitor, once for control (not again for second ptz)
+        assert mock_api.get.call_count == 2
+        assert mock_api.request.call_count == 2
 
     def test_ptz_unknown_command_raises(self):
         """ptz() with unknown command raises ValueError."""

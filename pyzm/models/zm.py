@@ -254,6 +254,9 @@ class Monitor:
 
     _raw: dict = field(default_factory=dict, repr=False, compare=False)
     _client: ZMClient | None = field(default=None, repr=False, compare=False)
+    _ptz_caps_cache: PTZCapabilities | None = field(
+        default=None, repr=False, compare=False,
+    )
 
     # ------------------------------------------------------------------
     # Resource methods (delegate to ZMClient internals)
@@ -348,7 +351,7 @@ class Monitor:
         return self._client._ptz_capabilities(self.control_id)
 
     def ptz(
-        self, command: str, *, mode: str = "con", preset: int = 1,
+        self, command: str, *, mode: str = "auto", preset: int = 1,
         stop_after: float | None = None,
     ) -> None:
         """Send a PTZ command to this monitor.
@@ -361,8 +364,9 @@ class Monitor:
             ``"down_right"``, ``"zoom_in"``, ``"zoom_out"``, ``"stop"``,
             ``"home"``, ``"preset"``.
         mode:
-            Movement mode — ``"con"`` (continuous, default), ``"rel"``
-            (relative), or ``"abs"`` (absolute).
+            Movement mode — ``"auto"`` (default, picks the best mode
+            supported by the camera's control profile), ``"con"``
+            (continuous), ``"rel"`` (relative), or ``"abs"`` (absolute).
         preset:
             Preset number for ``command="preset"`` (default 1).
         stop_after:
@@ -374,9 +378,54 @@ class Monitor:
             raise ValueError(
                 f"Monitor {self.id} ({self.name!r}) is not controllable"
             )
+        resolved_mode = mode
+        cmd = command.lower().strip()
+        # stop/home/preset don't use a mode prefix — skip auto-detection
+        if mode == "auto" and cmd not in ("stop", "home", "preset"):
+            resolved_mode = self._resolve_ptz_mode(command)
+        elif mode == "auto":
+            resolved_mode = "con"  # placeholder, ignored by these commands
         self._client._ptz_command(
-            self.id, command, mode=mode, preset=preset, stop_after=stop_after,
+            self.id, command, mode=resolved_mode, preset=preset,
+            stop_after=stop_after,
         )
+
+    def _resolve_ptz_mode(self, command: str) -> str:
+        """Pick the best PTZ mode based on the control profile capabilities."""
+        import logging
+        log = logging.getLogger("pyzm")
+
+        if self._ptz_caps_cache is None:
+            self._ptz_caps_cache = self.ptz_capabilities()
+        caps = self._ptz_caps_cache
+
+        cmd = command.lower().strip()
+        is_zoom = cmd in ("zoom_in", "zoom_out")
+
+        if is_zoom:
+            candidates = [
+                ("con", caps.can_zoom_con),
+                ("rel", caps.can_zoom_rel),
+                ("abs", caps.can_zoom_abs),
+            ]
+        else:
+            candidates = [
+                ("con", caps.can_move_con),
+                ("rel", caps.can_move_rel),
+                ("abs", caps.can_move_abs),
+            ]
+
+        for mode_name, supported in candidates:
+            if supported:
+                log.debug("PTZ auto-mode: selected '%s' for command '%s'", mode_name, command)
+                return mode_name
+
+        # Fallback to con (previous default) if profile has no flags set
+        log.warning(
+            "PTZ auto-mode: no supported mode found for '%s' in control "
+            "profile; falling back to 'con'", command,
+        )
+        return "con"
 
     def _require_client(self) -> None:
         if self._client is None:
@@ -395,11 +444,11 @@ class Monitor:
             id=int(mon.get("Id", 0)),
             name=mon.get("Name", ""),
             function=mon.get("Function", ""),
-            enabled=mon.get("Enabled") == "1",
+            enabled=str(mon.get("Enabled", "0")) == "1",
             width=int(mon.get("Width", 0)),
             height=int(mon.get("Height", 0)),
             type=mon.get("Type", ""),
-            controllable=mon.get("Controllable") == "1",
+            controllable=str(mon.get("Controllable", "0")) == "1",
             control_id=int(raw_control_id) if raw_control_id else None,
             status=MonitorStatus(
                 state=status_data.get("Status", ""),
