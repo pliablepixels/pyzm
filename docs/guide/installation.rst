@@ -161,6 +161,24 @@ On macOS the venv can live anywhere — there is no ``www-data`` user:
    python3 -m venv ~/zm-venv --system-site-packages
    ~/zm-venv/bin/pip install -e ".[ml,serve,train]"
 
+Upgrading
+---------
+
+**PyPI install:**
+
+.. code-block:: bash
+
+   # Replace [full] with whichever extras you originally installed:
+   sudo /opt/zoneminder/venv/bin/pip install --upgrade "pyzm[full]"
+
+**Source install:**
+
+.. code-block:: bash
+
+   cd pyzm
+   git pull
+   sudo ./scripts/setup_venv.sh --extras full   # same extras you used before
+
 Optional dependencies
 ---------------------
 
