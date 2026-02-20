@@ -29,3 +29,30 @@ installations.
 
 Set ``verify_ssl=False`` if your ZM server uses a self-signed TLS
 certificate.
+
+Accessing the full API response
+--------------------------------
+
+pyzm models only extract a subset of the fields returned by the ZM API.
+Every API-sourced object carries a ``raw()`` method that returns the full,
+unmodified API response dict — useful for accessing fields like ``Path``,
+``Protocol``, ``StorageId``, etc.:
+
+.. code-block:: python
+
+   m = zm.monitor(1)
+   m.raw()["Monitor"]["Path"]        # e.g. "rtsp://cam/stream"
+   m.raw()["Monitor"]["Protocol"]    # e.g. "rtsp"
+   m.status.raw()                    # full Monitor_Status sub-dict
+
+   ev = zm.event(12345)
+   ev.raw()["Event"]["DiskSpace"]    # field not on the Event dataclass
+
+   frames = ev.get_frames()
+   frames[0].raw()                   # full Frame API dict
+
+   zones = m.get_zones()
+   zones[0].raw()                    # full Zone API dict including AlarmRGB, etc.
+
+``raw()`` is available on ``Monitor``, ``MonitorStatus``, ``Event``,
+``Frame``, ``Zone``, and ``PTZCapabilities``.
