@@ -80,6 +80,13 @@ class ZMClientConfig(BaseModel):
     verify_ssl: bool = True
     timeout: int = 30
 
+    # Database credential overrides (None = use zm.conf / built-in defaults)
+    db_user: str | None = None
+    db_password: SecretStr | None = None
+    db_host: str | None = None
+    db_name: str | None = None
+    conf_path: str | None = None
+
     @model_validator(mode="after")
     def _derive_portal_url(self) -> "ZMClientConfig":
         if self.portal_url is None and self.api_url.endswith("/api"):

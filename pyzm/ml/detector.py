@@ -613,12 +613,10 @@ class Detector:
 
         # Query DB for event video file and monitor location
         try:
-            from pyzm.zm.db import get_zm_db
-        except ImportError:
-            logger.debug("pyzm.zm.db not available, skipping audio extraction")
+            conn = zm_client._get_db()
+        except Exception:
+            logger.debug("Could not get DB connection, skipping audio extraction")
             return None, -1, -1.0, -1.0
-
-        conn = get_zm_db()
         if conn is None:
             logger.debug("Could not connect to ZM database, skipping audio extraction")
             return None, -1, -1.0, -1.0

@@ -1,7 +1,7 @@
 """Direct MySQL connection to the ZoneMinder database.
 
 Reads credentials from ``/etc/zm/zm.conf`` (and ``conf.d/*.conf``) —
-the same files that ZM itself uses.
+the same files that ZM itself uses.  Explicit overrides take precedence.
 """
 
 from __future__ import annotations
@@ -39,15 +39,43 @@ def _read_zm_conf(conf_path: str = _CONF_PATH) -> dict[str, str]:
     }
 
 
-def get_zm_db():
-    """Return a ``mysql.connector`` connection to the ZM database, or ``None``."""
+def get_zm_db(
+    db_user: str | None = None,
+    db_password: str | None = None,
+    db_host: str | None = None,
+    db_name: str | None = None,
+    conf_path: str | None = None,
+):
+    """Return a ``mysql.connector`` connection to the ZM database, or ``None``.
+
+    Merge strategy: always try to read zm.conf first. If it's unreadable
+    (permission denied, missing), log a warning and continue. Then overlay
+    any explicit values — explicit values win over zm.conf values. Final
+    fallback for host is ``"localhost"``, for db name is ``"zm"``.
+    """
     try:
         import mysql.connector
     except ImportError:
         logger.warning("mysql-connector-python not installed, DB access unavailable")
         return None
 
-    creds = _read_zm_conf()
+    # Start with zm.conf values (best-effort)
+    try:
+        creds = _read_zm_conf(conf_path or _CONF_PATH)
+    except (PermissionError, OSError) as exc:
+        logger.warning("Could not read zm.conf: %s", exc)
+        creds = {"user": "zmuser", "password": "zmpass", "host": "localhost", "database": "zm"}
+
+    # Overlay explicit overrides
+    if db_user is not None:
+        creds["user"] = db_user
+    if db_password is not None:
+        creds["password"] = db_password
+    if db_host is not None:
+        creds["host"] = db_host
+    if db_name is not None:
+        creds["database"] = db_name
+
     host = creds["host"]
     port = 3306
 

@@ -1039,87 +1039,76 @@ class TestExtractEventAudio:
             mock_cursor.fetchone.return_value = row
         return mock_conn
 
-    @patch("pyzm.zm.db.get_zm_db", return_value=None)
-    def test_returns_none_when_no_db(self, mock_get_db):
-        """get_zm_db() returning None means no audio extraction."""
+    def test_returns_none_when_no_db(self):
+        """zm_client._get_db() returning None means no audio extraction."""
         from pyzm.ml.detector import Detector
 
         mock_zm = MagicMock()
+        mock_zm._get_db.return_value = None
         wav, week, lat, lon = Detector._extract_event_audio(mock_zm, 123)
         assert wav is None
         assert week == -1
         assert lat == -1.0
         assert lon == -1.0
 
-    @patch("pyzm.zm.db.get_zm_db")
-    def test_returns_none_when_db_query_fails(self, mock_get_db):
+    def test_returns_none_when_db_query_fails(self):
         from pyzm.ml.detector import Detector
 
-        mock_get_db.return_value = self._make_mock_db(raise_on_execute=True)
-
         mock_zm = MagicMock()
+        mock_zm._get_db.return_value = self._make_mock_db(raise_on_execute=True)
+
         wav, week, lat, lon = Detector._extract_event_audio(mock_zm, 123)
         assert wav is None
 
-    @patch("pyzm.zm.db.get_zm_db")
-    def test_returns_none_when_no_default_video(self, mock_get_db):
+    def test_returns_none_when_no_default_video(self):
         from pyzm.ml.detector import Detector
 
-        mock_get_db.return_value = self._make_mock_db(
+        mock_zm = MagicMock()
+        mock_zm._get_db.return_value = self._make_mock_db(
             row={"DefaultVideo": None, "StartDateTime": None, "Latitude": None, "Longitude": None},
         )
 
-        mock_zm = MagicMock()
         wav, week, lat, lon = Detector._extract_event_audio(mock_zm, 123)
         assert wav is None
 
-    @patch("pyzm.zm.db.get_zm_db")
-    def test_returns_none_when_no_event_path_method(self, mock_get_db):
+    def test_returns_none_when_get_db_raises(self):
+        """_get_db() raising an exception is handled gracefully."""
         from pyzm.ml.detector import Detector
 
-        mock_get_db.return_value = self._make_mock_db(row={
-            "DefaultVideo": "video.mp4",
-            "StartDateTime": "2025-06-15 10:00:00",
-            "Latitude": None,
-            "Longitude": None,
-        })
+        mock_zm = MagicMock()
+        mock_zm._get_db.side_effect = ImportError("no mysql")
 
-        mock_zm = MagicMock(spec=[])  # no event_path method
         wav, week, lat, lon = Detector._extract_event_audio(mock_zm, 123)
         assert wav is None
 
-    @patch("pyzm.zm.db.get_zm_db")
     @patch("os.path.isfile", return_value=False)
-    def test_returns_none_when_video_file_missing(self, mock_isfile, mock_get_db):
+    def test_returns_none_when_video_file_missing(self, mock_isfile):
         from pyzm.ml.detector import Detector
 
-        mock_get_db.return_value = self._make_mock_db(row={
+        mock_zm = MagicMock()
+        mock_zm._get_db.return_value = self._make_mock_db(row={
             "DefaultVideo": "video.mp4",
             "StartDateTime": "2025-06-15 10:00:00",
             "Latitude": None,
             "Longitude": None,
         })
-
-        mock_zm = MagicMock()
         mock_zm.event.return_value.path.return_value = "/events/123"
 
         wav, week, lat, lon = Detector._extract_event_audio(mock_zm, 123)
         assert wav is None
 
-    @patch("pyzm.zm.db.get_zm_db")
     @patch("subprocess.run")
     @patch("os.path.isfile", return_value=True)
-    def test_returns_none_when_no_audio_stream(self, mock_isfile, mock_run, mock_get_db):
+    def test_returns_none_when_no_audio_stream(self, mock_isfile, mock_run):
         from pyzm.ml.detector import Detector
 
-        mock_get_db.return_value = self._make_mock_db(row={
+        mock_zm = MagicMock()
+        mock_zm._get_db.return_value = self._make_mock_db(row={
             "DefaultVideo": "video.mp4",
             "StartDateTime": "2025-06-15 10:00:00",
             "Latitude": None,
             "Longitude": None,
         })
-
-        mock_zm = MagicMock()
         mock_zm.event.return_value.path.return_value = "/events/123"
 
         # ffprobe returns no audio
@@ -1128,22 +1117,20 @@ class TestExtractEventAudio:
         wav, week, lat, lon = Detector._extract_event_audio(mock_zm, 123)
         assert wav is None
 
-    @patch("pyzm.zm.db.get_zm_db")
     @patch("os.close")
     @patch("tempfile.mkstemp", return_value=(5, "/tmp/zm_birdnet_test.wav"))
     @patch("subprocess.run")
     @patch("os.path.isfile", return_value=True)
-    def test_successful_extraction(self, mock_isfile, mock_run, mock_mkstemp, mock_close, mock_get_db):
+    def test_successful_extraction(self, mock_isfile, mock_run, mock_mkstemp, mock_close):
         from pyzm.ml.detector import Detector
 
-        mock_get_db.return_value = self._make_mock_db(row={
+        mock_zm = MagicMock()
+        mock_zm._get_db.return_value = self._make_mock_db(row={
             "DefaultVideo": "video.mp4",
             "StartDateTime": "2025-06-15 10:00:00",
             "Latitude": 43.65,
             "Longitude": -79.38,
         })
-
-        mock_zm = MagicMock()
         mock_zm.event.return_value.path.return_value = "/events/123"
 
         # ffprobe finds audio
@@ -1160,23 +1147,21 @@ class TestExtractEventAudio:
         # June 15 = day 166, week = (166 // 7) + 1 = 24
         assert week == 24
 
-    @patch("pyzm.zm.db.get_zm_db")
     @patch("os.close")
     @patch("tempfile.mkstemp", return_value=(5, "/tmp/zm_birdnet_test.wav"))
     @patch("subprocess.run")
     @patch("os.path.isfile", return_value=True)
-    def test_week_computed_correctly_for_january(self, mock_isfile, mock_run, mock_mkstemp, mock_close, mock_get_db):
+    def test_week_computed_correctly_for_january(self, mock_isfile, mock_run, mock_mkstemp, mock_close):
         """January 1 should give week 1."""
         from pyzm.ml.detector import Detector
 
-        mock_get_db.return_value = self._make_mock_db(row={
+        mock_zm = MagicMock()
+        mock_zm._get_db.return_value = self._make_mock_db(row={
             "DefaultVideo": "video.mp4",
             "StartDateTime": "2025-01-01 12:00:00",
             "Latitude": None,
             "Longitude": None,
         })
-
-        mock_zm = MagicMock()
         mock_zm.event.return_value.path.return_value = "/events/1"
 
         probe_result = MagicMock(stdout="audio\n")
@@ -1186,23 +1171,21 @@ class TestExtractEventAudio:
         wav, week, lat, lon = Detector._extract_event_audio(mock_zm, 1)
         assert week == 1
 
-    @patch("pyzm.zm.db.get_zm_db")
     @patch("os.close")
     @patch("tempfile.mkstemp", return_value=(5, "/tmp/zm_birdnet_test.wav"))
     @patch("subprocess.run")
     @patch("os.path.isfile", return_value=True)
-    def test_week_clamped_to_48(self, mock_isfile, mock_run, mock_mkstemp, mock_close, mock_get_db):
+    def test_week_clamped_to_48(self, mock_isfile, mock_run, mock_mkstemp, mock_close):
         """Late December should clamp to week 48."""
         from pyzm.ml.detector import Detector
 
-        mock_get_db.return_value = self._make_mock_db(row={
+        mock_zm = MagicMock()
+        mock_zm._get_db.return_value = self._make_mock_db(row={
             "DefaultVideo": "video.mp4",
             "StartDateTime": "2025-12-31 12:00:00",
             "Latitude": None,
             "Longitude": None,
         })
-
-        mock_zm = MagicMock()
         mock_zm.event.return_value.path.return_value = "/events/1"
 
         probe_result = MagicMock(stdout="audio\n")
@@ -1212,25 +1195,23 @@ class TestExtractEventAudio:
         wav, week, lat, lon = Detector._extract_event_audio(mock_zm, 1)
         assert week <= 48
 
-    @patch("pyzm.zm.db.get_zm_db")
     @patch("os.unlink")
     @patch("os.close")
     @patch("tempfile.mkstemp", return_value=(5, "/tmp/zm_birdnet_test.wav"))
     @patch("subprocess.run")
     @patch("os.path.isfile", return_value=True)
-    def test_cleans_up_wav_on_ffmpeg_failure(self, mock_isfile, mock_run, mock_mkstemp, mock_close, mock_unlink, mock_get_db):
+    def test_cleans_up_wav_on_ffmpeg_failure(self, mock_isfile, mock_run, mock_mkstemp, mock_close, mock_unlink):
         """Temp WAV file is cleaned up when ffmpeg fails."""
         from pyzm.ml.detector import Detector
         import subprocess
 
-        mock_get_db.return_value = self._make_mock_db(row={
+        mock_zm = MagicMock()
+        mock_zm._get_db.return_value = self._make_mock_db(row={
             "DefaultVideo": "video.mp4",
             "StartDateTime": "2025-06-15 10:00:00",
             "Latitude": None,
             "Longitude": None,
         })
-
-        mock_zm = MagicMock()
         mock_zm.event.return_value.path.return_value = "/events/123"
 
         # ffprobe finds audio
@@ -1245,23 +1226,21 @@ class TestExtractEventAudio:
         assert wav is None
         mock_unlink.assert_called_once_with("/tmp/zm_birdnet_test.wav")
 
-    @patch("pyzm.zm.db.get_zm_db")
     @patch("os.close")
     @patch("tempfile.mkstemp", return_value=(5, "/tmp/zm_birdnet_test.wav"))
     @patch("subprocess.run")
     @patch("os.path.isfile", return_value=True)
-    def test_monitor_latlon_defaults_to_negative(self, mock_isfile, mock_run, mock_mkstemp, mock_close, mock_get_db):
+    def test_monitor_latlon_defaults_to_negative(self, mock_isfile, mock_run, mock_mkstemp, mock_close):
         """Missing Latitude/Longitude default to -1.0."""
         from pyzm.ml.detector import Detector
 
-        mock_get_db.return_value = self._make_mock_db(row={
+        mock_zm = MagicMock()
+        mock_zm._get_db.return_value = self._make_mock_db(row={
             "DefaultVideo": "video.mp4",
             "StartDateTime": "2025-06-15 10:00:00",
             "Latitude": None,
             "Longitude": None,
         })
-
-        mock_zm = MagicMock()
         mock_zm.event.return_value.path.return_value = "/events/123"
 
         probe_result = MagicMock(stdout="audio\n")

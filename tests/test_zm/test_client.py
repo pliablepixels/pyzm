@@ -1263,8 +1263,7 @@ class TestEventTag:
     """Tests for Event.tag() (direct DB implementation)."""
 
     @patch("pyzm.client.ZMAPI")
-    @patch("pyzm.zm.db.get_zm_db")
-    def test_tag_creates_new_tag(self, mock_get_db, mock_zmapi_cls):
+    def test_tag_creates_new_tag(self, mock_zmapi_cls):
         mock_api = _make_mock_api()
         mock_api.get.return_value = {"event": _sample_event_api_data(12345)}
         mock_zmapi_cls.return_value = mock_api
@@ -1274,10 +1273,10 @@ class TestEventTag:
         mock_conn.cursor.return_value = mock_cursor
         mock_cursor.fetchone.return_value = None  # tag doesn't exist
         mock_cursor.lastrowid = 7
-        mock_get_db.return_value = mock_conn
 
         from pyzm.client import ZMClient
         client = ZMClient(api_url="https://zm.example.com/zm/api")
+        client._get_db = MagicMock(return_value=mock_conn)
         ev = client.event(12345)
         ev.tag(["person"])
 
@@ -1289,8 +1288,7 @@ class TestEventTag:
         mock_conn.commit.assert_called()
 
     @patch("pyzm.client.ZMAPI")
-    @patch("pyzm.zm.db.get_zm_db")
-    def test_tag_links_existing_tag(self, mock_get_db, mock_zmapi_cls):
+    def test_tag_links_existing_tag(self, mock_zmapi_cls):
         mock_api = _make_mock_api()
         mock_api.get.return_value = {"event": _sample_event_api_data(12345)}
         mock_zmapi_cls.return_value = mock_api
@@ -1299,10 +1297,10 @@ class TestEventTag:
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
         mock_cursor.fetchone.return_value = {"Id": 42}  # tag exists
-        mock_get_db.return_value = mock_conn
 
         from pyzm.client import ZMClient
         client = ZMClient(api_url="https://zm.example.com/zm/api")
+        client._get_db = MagicMock(return_value=mock_conn)
         ev = client.event(12345)
         ev.tag(["person"])
 
@@ -1315,8 +1313,7 @@ class TestEventTag:
         mock_conn.commit.assert_called()
 
     @patch("pyzm.client.ZMAPI")
-    @patch("pyzm.zm.db.get_zm_db")
-    def test_tag_deduplicates_labels(self, mock_get_db, mock_zmapi_cls):
+    def test_tag_deduplicates_labels(self, mock_zmapi_cls):
         mock_api = _make_mock_api()
         mock_api.get.return_value = {"event": _sample_event_api_data(12345)}
         mock_zmapi_cls.return_value = mock_api
@@ -1326,10 +1323,10 @@ class TestEventTag:
         mock_conn.cursor.return_value = mock_cursor
         mock_cursor.fetchone.return_value = None
         mock_cursor.lastrowid = 1
-        mock_get_db.return_value = mock_conn
 
         from pyzm.client import ZMClient
         client = ZMClient(api_url="https://zm.example.com/zm/api")
+        client._get_db = MagicMock(return_value=mock_conn)
         ev = client.event(12345)
         ev.tag(["person", "person", "car", "car"])
 
@@ -1351,16 +1348,15 @@ class TestEventTag:
         # No DB calls should happen
 
     @patch("pyzm.client.ZMAPI")
-    @patch("pyzm.zm.db.get_zm_db")
-    def test_tag_no_db_graceful(self, mock_get_db, mock_zmapi_cls):
+    def test_tag_no_db_graceful(self, mock_zmapi_cls):
         """When DB is unavailable, tag() logs warning and returns."""
         mock_api = _make_mock_api()
         mock_api.get.return_value = {"event": _sample_event_api_data(12345)}
         mock_zmapi_cls.return_value = mock_api
-        mock_get_db.return_value = None
 
         from pyzm.client import ZMClient
         client = ZMClient(api_url="https://zm.example.com/zm/api")
+        client._get_db = MagicMock(return_value=None)
         ev = client.event(12345)
         ev.tag(["person"])  # should not raise
 

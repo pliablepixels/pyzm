@@ -63,6 +63,11 @@ class ZMClient:
         portal_url: str | None = None,
         verify_ssl: bool = True,
         timeout: int = 30,
+        db_user: str | None = None,
+        db_password: str | None = None,
+        db_host: str | None = None,
+        db_name: str | None = None,
+        conf_path: str | None = None,
         config: ZMClientConfig | None = None,
     ) -> None:
         if config is not None:
@@ -77,6 +82,11 @@ class ZMClient:
                 password=password,
                 verify_ssl=verify_ssl,
                 timeout=timeout,
+                db_user=db_user,
+                db_password=db_password,
+                db_host=db_host,
+                db_name=db_name,
+                conf_path=conf_path,
             )
 
         self._api = ZMAPI(self._config)
@@ -100,6 +110,24 @@ class ZMClient:
     @property
     def api_version(self) -> str | None:
         return self._api.api_version
+
+    # ------------------------------------------------------------------
+    # Database helpers
+    # ------------------------------------------------------------------
+
+    def _get_db(self):
+        """Return a DB connection using config-level credential overrides."""
+        from pyzm.zm.db import get_zm_db
+
+        cfg = self._config
+        pw = cfg.db_password.get_secret_value() if cfg.db_password else None
+        return get_zm_db(
+            db_user=cfg.db_user,
+            db_password=pw,
+            db_host=cfg.db_host,
+            db_name=cfg.db_name,
+            conf_path=cfg.conf_path,
+        )
 
     # ------------------------------------------------------------------
     # Monitors
@@ -344,13 +372,8 @@ class ZMClient:
     def _tag_one(self, label: str, event_id: int) -> None:
         """Create or find a tag by name and link it to an event via direct DB."""
         import datetime
-        try:
-            from pyzm.zm.db import get_zm_db
-        except ImportError:
-            logger.warning("pyzm.zm.db not available, cannot tag events")
-            return
 
-        conn = get_zm_db()
+        conn = self._get_db()
         if conn is None:
             logger.warning("Could not connect to ZM database, skipping tagging")
             return
@@ -388,9 +411,8 @@ class ZMClient:
     def _event_path(self, event_id: int) -> str | None:
         """Construct the filesystem path for an event."""
         from datetime import datetime as _dt
-        from pyzm.zm.db import get_zm_db
 
-        conn = get_zm_db()
+        conn = self._get_db()
         if conn is None:
             logger.warning("Cannot resolve event path: DB unavailable")
             return None

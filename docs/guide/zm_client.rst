@@ -48,6 +48,22 @@ Constructor parameters
    * - ``timeout``
      - ``30``
      - HTTP request timeout in seconds
+   * - ``db_user``
+     - ``None``
+     - Override the ZM database username (normally read from ``zm.conf``)
+   * - ``db_password``
+     - ``None``
+     - Override the ZM database password
+   * - ``db_host``
+     - ``None``
+     - Override the ZM database host (e.g. ``"dbhost"`` or ``"dbhost:3307"``)
+   * - ``db_name``
+     - ``None``
+     - Override the ZM database name
+   * - ``conf_path``
+     - ``None``
+     - Path to the ZM config directory (default ``/etc/zm``). Useful when
+       ``zm.conf`` lives in a non-standard location.
    * - ``config``
      - ``None``
      - A pre-built ``ZMClientConfig``. When provided, all other keyword
@@ -63,6 +79,38 @@ installations.
 
 Set ``verify_ssl=False`` if your ZM server uses a self-signed TLS
 certificate.
+
+Database access
+----------------
+
+Some operations — ``ev.tag()``, ``ev.path()``, and audio extraction for
+BirdNET — require a direct MySQL connection to the ZM database.  By
+default, pyzm reads credentials from ``/etc/zm/zm.conf`` (the same file
+ZoneMinder uses).
+
+If the user running pyzm cannot read ``zm.conf`` (e.g. permission
+denied), you can pass database credentials explicitly:
+
+.. code-block:: python
+
+   zm = ZMClient(
+       api_url="https://zm.example.com/zm/api",
+       user="admin",
+       password="secret",
+       db_user="zmuser",
+       db_password="zmpass",
+       db_host="localhost",
+   )
+
+   ev = zm.event(12345)
+   ev.tag(["person"])   # uses the explicit DB credentials
+   path = ev.path()     # same
+
+The merge strategy is:
+
+1. Try to read ``zm.conf`` (or ``conf_path`` if set).
+2. Overlay any explicit ``db_*`` parameters — explicit values always win.
+3. Fall back to ``"localhost"`` for host and ``"zm"`` for database name.
 
 Accessing the full API response
 --------------------------------

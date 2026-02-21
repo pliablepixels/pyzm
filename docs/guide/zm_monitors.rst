@@ -100,6 +100,25 @@ Modes: ``auto`` (default — picks the best mode supported by the camera's
 control profile, preferring continuous > relative > absolute),
 ``con`` (continuous), ``rel`` (relative), ``abs`` (absolute).
 
+Monitor events
+---------------
+
+.. code-block:: python
+
+   m = zm.monitor(1)
+
+   # Query events for this monitor
+   recent = m.events(since="6 hours ago", limit=10)
+   for ev in recent:
+       print(f"Event {ev.id}: {ev.cause} ({ev.length:.1f}s)")
+
+   # Bulk-delete old events for this monitor
+   count = m.delete_events(before="1 week ago", limit=500)
+   print(f"Deleted {count} events from {m.name}")
+
+Accepts the same filters as the top-level ``zm.events()`` and
+``zm.delete_events()`` calls — see :doc:`zm_events` for the full list.
+
 Getting zones
 --------------
 

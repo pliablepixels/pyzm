@@ -11,6 +11,9 @@ Querying events
    for ev in events:
        print(f"Event {ev.id}: {ev.cause} ({ev.length:.1f}s, {ev.alarm_frames} alarm frames)")
 
+   # Events for a specific monitor
+   events = zm.events(monitor_id=1, since="1 hour ago")
+
    # Single event
    ev = zm.event(12345)
 
@@ -53,6 +56,11 @@ Event methods
    # Get the filesystem path (requires DB access)
    path = ev.path()
    # e.g. "/var/cache/zoneminder/events/1/2024-01-15/12345"
+
+``tag()`` and ``path()`` require a direct database connection.  By
+default, credentials are read from ``/etc/zm/zm.conf``.  If that file is
+not readable, pass ``db_user``, ``db_password``, etc. when creating the
+client — see :doc:`zm_client` for details.
 
    # Extract frames as numpy arrays (requires pyzm[ml])
    frames, dims = ev.extract_frames(stream_config=StreamConfig(resize=800))
