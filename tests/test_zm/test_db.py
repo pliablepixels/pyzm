@@ -117,6 +117,25 @@ class TestGetZmDb:
         assert call_kwargs["host"] == "localhost"
         assert call_kwargs["database"] == "zm"
 
+    @patch("pyzm.zm.db._read_zm_conf", side_effect=PermissionError("denied"))
+    @patch("mysql.connector.connect")
+    def test_permission_denied_debug_when_explicit(self, mock_connect, mock_conf, caplog):
+        """zm.conf failure is debug-level (not warning) when explicit creds provided."""
+        import logging
+        with caplog.at_level(logging.DEBUG, logger="pyzm.zm"):
+            get_zm_db(db_user="u", db_password="p")
+        assert any(r.levelno == logging.DEBUG and "explicit credentials" in r.message for r in caplog.records)
+        assert not any(r.levelno == logging.WARNING and "zm.conf" in r.message for r in caplog.records)
+
+    @patch("pyzm.zm.db._read_zm_conf", side_effect=PermissionError("denied"))
+    @patch("mysql.connector.connect")
+    def test_permission_denied_warning_when_no_explicit(self, mock_connect, mock_conf, caplog):
+        """zm.conf failure is warning-level when no explicit creds provided."""
+        import logging
+        with caplog.at_level(logging.DEBUG, logger="pyzm.zm"):
+            get_zm_db()
+        assert any(r.levelno == logging.WARNING and "zm.conf" in r.message for r in caplog.records)
+
     @patch("pyzm.zm.db._read_zm_conf")
     @patch("mysql.connector.connect")
     def test_host_with_port(self, mock_connect, mock_conf):

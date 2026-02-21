@@ -60,10 +60,14 @@ def get_zm_db(
         return None
 
     # Start with zm.conf values (best-effort)
+    has_explicit = any(v is not None for v in [db_user, db_password, db_host, db_name])
     try:
         creds = _read_zm_conf(conf_path or _CONF_PATH)
     except (PermissionError, OSError) as exc:
-        logger.warning("Could not read zm.conf: %s", exc)
+        if has_explicit:
+            logger.debug("Could not read zm.conf: %s (using explicit credentials)", exc)
+        else:
+            logger.warning("Could not read zm.conf: %s", exc)
         creds = {"user": "zmuser", "password": "zmpass", "host": "localhost", "database": "zm"}
 
     # Overlay explicit overrides
