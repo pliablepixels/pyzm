@@ -87,6 +87,137 @@ the best result based on the configured ``frame_strategy``.
 ``StreamConfig`` controls which frames are extracted, resizing, retry
 behaviour, and more.  See `StreamConfig`_ below for details.
 
+
+Audio detection (BirdNET)
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+pyzm supports audio-based detection via the `BirdNET
+<https://github.com/kahst/BirdNET-Analyzer>`_ backend, which can identify
+6500+ bird species from audio.
+
+**Requirements:**
+
+- ``birdnet-analyzer`` Python package
+- ``ffmpeg`` and ``ffprobe`` on ``PATH`` (used to extract audio from video)
+
+.. code-block:: bash
+
+   pip install birdnet-analyzer
+
+**Standalone audio file:**
+
+Use ``detect_audio()`` to analyse an audio file directly, without a
+ZoneMinder event:
+
+.. code-block:: python
+
+   from pyzm import Detector
+   from pyzm.models.config import DetectorConfig, ModelConfig, ModelType, ModelFramework
+
+   config = DetectorConfig(
+       models=[
+           ModelConfig(
+               name="BirdNET",
+               type=ModelType.AUDIO,
+               framework=ModelFramework.BIRDNET,
+               birdnet_min_conf=0.5,
+               birdnet_lat=42.36,    # location for species filtering
+               birdnet_lon=-71.06,
+           ),
+       ],
+   )
+
+   detector = Detector(config=config)
+   result = detector.detect_audio(
+       "/path/to/recording.wav",
+       event_week=24,          # ISO week (1-48) for seasonal filtering
+       lat=42.36, lon=-71.06,  # fallback if not set in config
+   )
+
+   for det in result.detections:
+       print(f"{det.label}: {det.confidence:.0%}")
+       # e.g. "Northern Cardinal: 87%"
+
+``detect_audio()`` accepts any audio format that ffmpeg can read (WAV,
+MP3, MP4, FLAC, etc.).  Audio is split into 3-second chunks and each
+chunk is analysed independently; the best confidence per species across
+all chunks is returned.
+
+Parameters:
+
+- ``audio_path`` -- path to the audio file
+- ``event_week`` -- ISO week number (1--48) for seasonal filtering;
+  ``-1`` disables
+- ``lat``, ``lon`` -- latitude/longitude for location-based species
+  filtering; ``-1`` disables.  These are fallbacks -- values set in
+  ``ModelConfig`` (``birdnet_lat``, ``birdnet_lon``) take precedence.
+
+**Event-based audio (automatic):**
+
+When ``detect_event()`` finds an audio-type model in the pipeline, it
+automatically extracts audio from the event's video file:
+
+1. Queries the ZM database for the event's ``DefaultVideo`` and the
+   monitor's ``Latitude`` / ``Longitude``.
+2. Probes the video for an audio stream (via ``ffprobe``).
+3. Extracts audio to a temporary WAV file (48 kHz, mono, PCM s16le).
+4. Computes the ISO week number from the event's start time.
+5. Runs BirdNET analysis alongside the image detection pipeline.
+6. Cleans up the temporary WAV file after detection.
+
+No extra code is needed -- just include an audio model in the
+``ml_sequence``:
+
+.. code-block:: yaml
+
+   ml_sequence:
+     general:
+       model_sequence: "object,audio"
+     object:
+       sequence:
+         - object_framework: opencv
+           object_weights: /path/to/yolo11s.onnx
+     audio:
+       sequence:
+         - name: BirdNET
+           audio_framework: birdnet
+           birdnet_min_conf: 0.5
+           birdnet_lat: 42.36
+           birdnet_lon: -71.06
+           birdnet_sensitivity: 1.0
+           birdnet_overlap: 0.0
+
+**BirdNET config parameters:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 55
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``birdnet_min_conf``
+     - ``0.25``
+     - Minimum confidence threshold for species detection
+   * - ``birdnet_lat``
+     - ``-1.0``
+     - Latitude for location-based species filtering (``-1`` = disabled).
+       Falls back to the monitor's DB latitude if ``-1``.
+   * - ``birdnet_lon``
+     - ``-1.0``
+     - Longitude for location-based species filtering (``-1`` = disabled).
+       Falls back to the monitor's DB longitude if ``-1``.
+   * - ``birdnet_sensitivity``
+     - ``1.0``
+     - Sigmoid sensitivity for score calculation (higher = more sensitive)
+   * - ``birdnet_overlap``
+     - ``0.0``
+     - Overlap between audio chunks (0.0--1.0)
+
+Audio detections have ``detection_type="audio"`` and a dummy bounding box
+(``BBox(0, 0, 1, 1)``) since audio has no spatial location.
+
+
 Loading from YAML config
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -115,7 +246,54 @@ If you have an ``ml_sequence`` dict (from ``objectconfig.yml``):
    result = detector.detect("/path/to/image.jpg")
 
 ``from_dict()`` parses the nested dict format used by ``objectconfig.yml``
-and builds a fully typed ``DetectorConfig`` internally.
+and builds a fully typed ``DetectorConfig`` internally.  It also reads
+remote gateway settings from the ``general`` section:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Key
+     - Description
+   * - ``ml_gateway``
+     - URL of a remote ``pyzm.serve`` server (enables remote detection)
+   * - ``ml_gateway_mode``
+     - ``"url"`` (default) or ``"image"`` (see :doc:`serve guide </guide/serve>`)
+   * - ``ml_user``
+     - Username for server authentication
+   * - ``ml_password``
+     - Password for server authentication
+   * - ``ml_timeout``
+     - HTTP timeout in seconds (default ``60``)
+
+Loading from a YAML config file
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``from_config()`` loads a ``Detector`` from a YAML file whose structure
+matches ``DetectorConfig`` fields directly (not the ``ml_sequence``
+format):
+
+.. code-block:: python
+
+   detector = Detector.from_config("/etc/pyzm/detector.yml")
+
+Example ``detector.yml``:
+
+.. code-block:: yaml
+
+   models:
+     - name: "YOLO11s"
+       type: object
+       framework: opencv
+       processor: gpu
+       weights: /path/to/yolo11s.onnx
+       min_confidence: 0.3
+       pattern: "(person|car)"
+   match_strategy: most
+   frame_strategy: most_models
+
+This is useful when you want to configure detection with Pydantic-style
+field names rather than the ``objectconfig.yml`` dict convention.
 
 
 Architecture overview
@@ -184,7 +362,7 @@ Per-model settings:
 
    model = ModelConfig(
        name="YOLO11s",
-       type="object",                    # object | face | alpr
+       type="object",                    # object | face | alpr | audio
        framework=ModelFramework.OPENCV,  # opencv | coral_edgetpu | face_dlib | ...
        processor=Processor.GPU,          # cpu | gpu | tpu
        weights="/path/to/yolo11s.onnx",
@@ -217,6 +395,72 @@ Controls frame extraction from ZM events:
 
 ``frame_set`` values: ``"snapshot"`` (the ZM snapshot image), ``"alarm"``
 (alarm frames), or integer frame IDs as strings.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 55
+
+   * - Field
+     - Default
+     - Description
+   * - ``frame_set``
+     - ``["snapshot", "alarm", "1"]``
+     - Which frames to extract from the event
+   * - ``resize``
+     - ``800``
+     - Resize longest edge to N pixels. ``None`` = no resize.
+   * - ``max_frames``
+     - ``0``
+     - Maximum frames to extract. ``0`` = no limit.
+   * - ``start_frame``
+     - ``1``
+     - First frame index to consider
+   * - ``frame_skip``
+     - ``1``
+     - Process every Nth frame
+   * - ``delay``
+     - ``0``
+     - Delay in seconds before starting frame extraction
+   * - ``delay_between_frames``
+     - ``0``
+     - Delay in seconds between fetching each frame
+   * - ``delay_between_snapshots``
+     - ``0``
+     - Delay in seconds between snapshot requests
+   * - ``contig_frames_before_error``
+     - ``5``
+     - Number of contiguous frame-fetch failures before aborting
+   * - ``max_attempts``
+     - ``1``
+     - Number of retry attempts on failure
+   * - ``sleep_between_attempts``
+     - ``3``
+     - Seconds between retry attempts
+   * - ``download``
+     - ``False``
+     - Download frames to disk instead of keeping in memory
+   * - ``download_dir``
+     - ``"/tmp"``
+     - Directory for downloaded frames (when ``download=True``)
+   * - ``disable_ssl_cert_check``
+     - ``True``
+     - Skip SSL certificate verification when fetching frames
+   * - ``save_frames``
+     - ``False``
+     - Save extracted frames to disk for debugging
+   * - ``save_frames_dir``
+     - ``"/tmp"``
+     - Directory for saved frames
+   * - ``delete_after_analyze``
+     - ``False``
+     - Delete downloaded frames after detection completes
+   * - ``convert_snapshot_to_fid``
+     - ``False``
+     - Convert ``"snapshot"`` to an actual frame ID
+
+In YAML (``stream_sequence`` dict), ``from_dict()`` accepts string
+conventions: ``resize: "no"`` → ``None``, ``resize: "800"`` → ``800``,
+``frame_set: "snapshot,alarm,1"`` → list, ``"yes"``/``"no"`` → bool.
 
 
 Model discovery
@@ -423,6 +667,11 @@ specific zones:
             ignore_pattern="(car|truck)"),  # suppress parked vehicles
    ]
 
+.. note::
+
+   When no zones are passed (or the list is empty), zone filtering is
+   skipped entirely and all detections pass through.
+
 When using ZoneMinder events, use ``zm.monitor(monitor_id).get_zones()`` to
 fetch zones configured in the ZM web UI.
 
@@ -500,6 +749,48 @@ automatically:
          - ...
 
 
+Pre-existing label gates
+-------------------------
+
+``pre_existing_labels`` lets you gate a model so it only runs when a
+previous model in the pipeline has already detected one of the listed
+labels. This is most commonly used for ALPR: there is no point running
+license-plate recognition unless an object detector has already found a
+car, bus, or truck.
+
+.. code-block:: yaml
+
+   ml_sequence:
+     general:
+       model_sequence: "object,alpr"
+     object:
+       sequence:
+         - object_framework: opencv
+           object_weights: /path/to/yolo11s.onnx
+     alpr:
+       general:
+         pre_existing_labels: ["car", "bus", "truck"]
+       sequence:
+         - alpr_service: plate_recognizer
+           alpr_key: YOUR_KEY
+
+In Python:
+
+.. code-block:: python
+
+   ModelConfig(
+       name="PlateRecognizer",
+       type=ModelType.ALPR,
+       framework=ModelFramework.PLATE_RECOGNIZER,
+       alpr_key="YOUR_KEY",
+       pre_existing_labels=["car", "bus", "truck"],
+   )
+
+If no model in a prior type has detected any of the listed labels, the
+model is skipped entirely (logged at debug level). ``pre_existing_labels``
+can be set per-model or in the per-type ``general`` section.
+
+
 Past-detection filtering
 -------------------------
 
@@ -531,6 +822,11 @@ per-type: detections are grouped by their ``detection_type`` and each
 group uses its own resolved config.  Past data is loaded once, and all
 detections are saved once after filtering.
 
+The pickle file is stored at ``<image_path>/past_detections.pkl``.
+``image_path`` defaults to ``"/tmp"``
+and can be set in ``DetectorConfig`` or via ``objectconfig.yml``
+(which typically sets it to ``"/var/lib/zmeventnotification/images"``).
+
 
 Result objects
 ---------------
@@ -548,10 +844,19 @@ DetectionResult
    result.frame_id         # int | str | None
    result.image            # np.ndarray | None (the source image)
    result.image_dimensions # dict
+   result.error_boxes      # list[BBox] -- detections filtered out by zone/pattern/size
 
-   result.annotate()       # draw boxes, return annotated image
+   result.annotate()       # draw boxes on image (error_boxes drawn in red)
    result.filter_by_pattern("person")  # new result with only matching labels
    result.to_dict()        # serialize to dict
+
+   # Reconstruct from a wire dict (e.g. JSON from pyzm.serve)
+   result = DetectionResult.from_dict(data)
+
+``error_boxes`` contains bounding boxes for objects that were detected by
+the model but subsequently filtered out (wrong zone, wrong pattern, too
+large, etc.). These are drawn in red (unfilled) by ``annotate()`` so you
+can see what was rejected.
 
 Detection
 ~~~~~~~~~~
@@ -564,6 +869,8 @@ Detection
    det.model_name      # str
    det.detection_type  # str ("object", "face", "alpr", "audio")
 
+   det.matches_pattern("(person|car)")  # bool -- regex match against label
+
 BBox
 ~~~~~
 
@@ -575,3 +882,6 @@ BBox
    bbox.height         # y2 - y1
    bbox.area           # width * height
    bbox.center         # (cx, cy) tuple
+
+   bbox.as_list()             # [x1, y1, x2, y2]
+   bbox.as_polygon_coords()   # [(x1,y1), (x2,y1), (x2,y2), (x1,y2)] for Shapely

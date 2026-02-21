@@ -194,4 +194,6 @@ Pytest markers
    * - ``zm_e2e``
      - Tests requiring a live ZoneMinder instance (configured via ``.env.zm_e2e``)
    * - ``zm_e2e_write``
-     - ZM E2E tests that mutate state (opt-in via ``ZM_E2E_WRITE=1``)
+     - ZM E2E tests that mutate state (event notes, stop/start/restart, DB
+       tagging). Excluded from CI; opt-in via ``ZM_E2E_WRITE=1``. Run
+       manually: ``sudo -u www-data ZM_E2E_WRITE=1 python -m pytest tests/test_zm_e2e/ -v -p no:cacheprovider``

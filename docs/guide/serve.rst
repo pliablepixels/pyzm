@@ -36,6 +36,43 @@ Two detection modes are available:
   and uploads each one to the ``/detect`` endpoint.  Use this when the
   server cannot reach ZoneMinder directly.
 
+.. list-table:: URL mode vs Image mode trade-offs
+   :header-rows: 1
+   :widths: 30 35 35
+
+   * -
+     - URL mode (default)
+     - Image mode
+   * - Network requirement
+     - Server must reach ZoneMinder
+     - Only client needs ZM access
+   * - Bandwidth
+     - Low — client sends only URLs
+     - Higher — client uploads JPEG per frame
+   * - Latency
+     - Server fetches from ZM (one extra hop)
+     - Single client → server transfer
+   * - Security
+     - ZM credentials forwarded via ``zm_auth``
+     - Images leave ZM network
+   * - Configuration
+     - ``gateway_mode`` omitted or ``"url"``
+     - ``gateway_mode="image"`` (Python) or
+       ``ml_gateway_mode: "image"`` (YAML)
+   * - Best for
+     - Same network / VPN between server and ZM
+     - Server on a different network or cloud
+
+**When to choose Image mode:**
+Use Image mode when the GPU server cannot reach the ZoneMinder API
+directly (e.g., server is in the cloud, or firewall rules prevent it).
+The client handles frame fetching and uploads JPEG images to ``/detect``.
+
+**When to stay with URL mode (default):**
+Use URL mode when the server and ZoneMinder are on the same network.
+This minimises bandwidth on the client side and lets the server fetch
+only the frames it needs.
+
 
 Deployment scenarios
 ---------------------
@@ -79,10 +116,9 @@ locally via the ``Detector`` class.
 
 .. code-block:: bash
 
-   sudo -u www-data python3 -m pyzm.zm_detect \
+   sudo -u www-data /opt/zoneminder/venv/bin/python /path/to/zm_detect.py \
        --config /etc/zm/objectconfig.yml \
-       --eventid 12345 \
-       --debug
+       --eventid 12345
 
 
 Scenario 2: ZM + hooks + pyzm (same box, no ES)
@@ -100,7 +136,7 @@ recording settings.
 
 .. code-block:: text
 
-   EventStartCommand = /usr/bin/python3 -m pyzm.zm_detect -c /etc/zm/objectconfig.yml -e %EID% -m %MID% -r "%EC%" -n
+   EventStartCommand = /opt/zoneminder/venv/bin/python /path/to/zm_detect.py -c /etc/zm/objectconfig.yml -e %EID% -m %MID% -r "%EC%" -n
 
 **objectconfig.yml** is the same as Scenario 1.
 
@@ -467,9 +503,16 @@ Run detection on images fetched from URLs (URL mode).
 - **Auth:** Bearer token (when auth enabled)
 - **Returns:** ``DetectionResult`` as JSON (best frame selected by ``frame_strategy``)
 
-The server appends ``zm_auth`` to each URL and fetches the image via HTTP GET.
-Frame strategy (``first``, ``first_new``, ``most``, ``most_unique``, ``most_models``)
-is applied server-side to pick the best result.
+The server appends ``zm_auth`` to each URL and fetches the image via HTTP
+GET (10-second timeout per URL; failures are logged and skipped).
+Frame strategy (``first``, ``first_new``, ``most``, ``most_unique``,
+``most_models``) is applied server-side to pick the best result.
+
+.. note::
+
+   The ``zones`` field accepts both ``"value"`` and ``"points"`` as the key
+   for polygon coordinates (they are interchangeable in both ``/detect``
+   and ``/detect_urls``).
 
 ``POST /login``
 ~~~~~~~~~~~~~~~~

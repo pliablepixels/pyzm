@@ -15,6 +15,20 @@ Listing monitors
 ``monitors()`` returns ``list[Monitor]``. Results are cached after the first
 call; pass ``force_reload=True`` to refresh.
 
+Monitor status
+---------------
+
+Each monitor carries a ``status`` object with runtime information:
+
+.. code-block:: python
+
+   m = zm.monitor(1)
+   print(m.status.state)         # "Idle", "Alarm", etc.
+   print(m.status.fps)           # capture FPS (float)
+   print(m.status.analysis_fps)  # analysis FPS (float)
+   print(m.status.bandwidth)     # capture bandwidth in bytes (int)
+   print(m.status.capturing)     # "None", "Capturing", etc.
+
 Monitor control
 ----------------
 
@@ -63,7 +77,7 @@ PTZ control
        caps = m.ptz_capabilities()
        print(caps.can_move_con, caps.can_zoom, caps.has_presets)
 
-       # Simple commands — defaults to continuous mode
+       # Simple commands — auto-detects the best mode from the control profile
        m.ptz("up")
        m.ptz("stop")
        m.ptz("zoom_in")
@@ -71,7 +85,7 @@ PTZ control
        # Move for 2 seconds then auto-stop
        m.ptz("right", stop_after=2.0)
 
-       # Relative or absolute mode
+       # Explicit mode override
        m.ptz("left", mode="rel")
 
        # Presets
@@ -82,7 +96,9 @@ Supported commands: ``up``, ``down``, ``left``, ``right``, ``up_left``,
 ``up_right``, ``down_left``, ``down_right``, ``zoom_in``, ``zoom_out``,
 ``stop``, ``home``, ``preset``.
 
-Modes: ``con`` (continuous, default), ``rel`` (relative), ``abs`` (absolute).
+Modes: ``auto`` (default — picks the best mode supported by the camera's
+control profile, preferring continuous > relative > absolute),
+``con`` (continuous), ``rel`` (relative), ``abs`` (absolute).
 
 Getting zones
 --------------

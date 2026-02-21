@@ -19,6 +19,40 @@ Connecting to ZoneMinder
 
 ``api_url`` must be the full ZM API URL (ending in ``/api``).
 
+Constructor parameters
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 15 65
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``api_url``
+     - (required)
+     - Full ZM API URL (e.g. ``https://server/zm/api``)
+   * - ``user``
+     - ``None``
+     - ZM username. ``None`` when auth is disabled.
+   * - ``password``
+     - ``None``
+     - ZM password
+   * - ``portal_url``
+     - auto
+     - Full portal URL (e.g. ``https://server/zm``). Auto-derived from
+       ``api_url`` when not provided.
+   * - ``verify_ssl``
+     - ``True``
+     - Set to ``False`` for self-signed certificates
+   * - ``timeout``
+     - ``30``
+     - HTTP request timeout in seconds
+   * - ``config``
+     - ``None``
+     - A pre-built ``ZMClientConfig``. When provided, all other keyword
+       args are ignored.
+
 Authentication
 ---------------
 
