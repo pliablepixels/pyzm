@@ -25,20 +25,6 @@ Development notes
     - Always add test cases, both unit and e2e
     - For e2e do not use ZM_E2E_WRITE - the user will run them manually
 
-
-Architecture notes
-------------------
-* `pyzm/models/` — Pydantic v2 config models, detection dataclasses, ZM entity models
-* `pyzm/zm/` — ZoneMinder integration: auth, HTTP API wrapper, frame extraction, shared memory
-* `pyzm/ml/` — ML inference layer, structured as:
-  * `pyzm/ml/*.py` (yolo.py, face.py, face_dlib.py, alpr.py, etc.) — **actual inference implementations**. These are the real code that loads models and runs detection. They are NOT deprecated or legacy.
-  * `pyzm/ml/backends/*.py` — thin v2 adapter wrappers that implement the `MLBackend` ABC interface. They delegate all real work to the corresponding `pyzm/ml/*.py` modules. These are NOT replacements.
-  * `pyzm/ml/detector.py` — public API that orchestrates backends
-  * `pyzm/ml/pipeline.py` — manages backend lifecycle and sequencing
-  * `pyzm/ml/filters.py` — post-detection filtering (zones, past detections, etc.)
-* `pyzm/client.py` — top-level `ZMClient` API combining ZM + ML functionality
-* `pyzm/log.py` — stdlib logging with optional ZM database log handler
-
 Documentation notes
 -------------------
 - You are an expert document writer and someone who cares deeply that documentation is clear, easy to follow, user friendly and comprehensive and CORRECT.
