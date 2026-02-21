@@ -46,16 +46,20 @@ def _create_backend(model_config: ModelConfig) -> MLBackend:
     fw = model_config.framework
 
     if fw in (ModelFramework.OPENCV, ModelFramework.HOG, ModelFramework.VIRELAI):
-        from pyzm.ml.backends.yolo import YoloBackend
-        return YoloBackend(model_config)
+        from pyzm.ml.backends.yolo import create_yolo_backend
+        return create_yolo_backend(model_config)
 
     if fw == ModelFramework.CORAL:
         from pyzm.ml.backends.coral import CoralBackend
         return CoralBackend(model_config)
 
-    if fw in (ModelFramework.FACE_DLIB, ModelFramework.FACE_TPU):
+    if fw == ModelFramework.FACE_DLIB:
         from pyzm.ml.backends.face_dlib import FaceDlibBackend
         return FaceDlibBackend(model_config)
+
+    if fw == ModelFramework.FACE_TPU:
+        from pyzm.ml.backends.face_tpu import FaceTpuBackend
+        return FaceTpuBackend(model_config)
 
     if fw in (ModelFramework.PLATE_RECOGNIZER, ModelFramework.OPENALPR):
         from pyzm.ml.backends.alpr import AlprBackend

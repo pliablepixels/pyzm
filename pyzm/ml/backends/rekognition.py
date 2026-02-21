@@ -1,4 +1,7 @@
-"""AWS Rekognition backend adapter wrapping ``pyzm.ml.aws_rekognition``."""
+"""AWS Rekognition object detection backend — merged from pyzm.ml.aws_rekognition.
+
+Refs #23
+"""
 
 from __future__ import annotations
 
@@ -16,11 +19,14 @@ logger = logging.getLogger("pyzm.ml")
 
 
 class RekognitionBackend(MLBackend):
-    """Wraps :class:`pyzm.ml.aws_rekognition.AwsRekognition` in the v2 backend interface."""
+    """AWS Rekognition object detection backend.
+
+    Cloud API — no model loading needed, no locking needed.
+    """
 
     def __init__(self, config: ModelConfig) -> None:
         self._config = config
-        self._model: object | None = None
+        self._client = None
 
     # -- MLBackend interface --------------------------------------------------
 
@@ -30,51 +36,79 @@ class RekognitionBackend(MLBackend):
 
     @property
     def is_loaded(self) -> bool:
-        return self._model is not None
+        return self._client is not None
 
     def load(self) -> None:
-        from pyzm.ml.aws_rekognition import AwsRekognition  # lazy import
+        import boto3
 
-        options = self._build_options()
+        boto3_kwargs: dict = {}
+        if self._config.aws_region:
+            boto3_kwargs["region_name"] = self._config.aws_region
+        if self._config.aws_access_key_id:
+            boto3_kwargs["aws_access_key_id"] = self._config.aws_access_key_id
+        if self._config.aws_secret_access_key:
+            boto3_kwargs["aws_secret_access_key"] = self._config.aws_secret_access_key
+
+        self._min_confidence = self._config.min_confidence
+        if self._min_confidence < 1:
+            # Rekognition wants confidence as 0%–100%, not 0.0–1.0
+            self._min_confidence *= 100
+
+        self._client = boto3.client("rekognition", **boto3_kwargs)
         logger.info(
-            "%s: initializing AWS Rekognition client (region=%s)",
-            self.name, self._config.aws_region,
+            "%s: AWS Rekognition initialized (region=%s, min confidence: %.0f%%)",
+            self.name,
+            self._config.aws_region,
+            self._min_confidence,
         )
-        self._model = AwsRekognition(options=options)
 
     def detect(self, image: "np.ndarray") -> list[Detection]:
-        if self._model is None:
+        import cv2
+
+        if self._client is None:
             self.load()
 
-        assert self._model is not None
-        boxes, labels, confidences, _model_tags = self._model.detect(image=image)
+        height, width = image.shape[:2]
+        logger.debug(
+            "|---------- AWS Rekognition (image: %dx%d) ----------|",
+            width,
+            height,
+        )
+
+        is_success, _buff = cv2.imencode(".jpg", image)
+        if not is_success:
+            logger.warning("Unable to convert image to JPG")
+            return []
+        image_jpg = _buff.tobytes()
+
+        response = self._client.detect_labels(
+            Image={"Bytes": image_jpg},
+            MinConfidence=self._min_confidence,
+        )
+        logger.debug("Detection response: %s", response)
 
         detections: list[Detection] = []
-        for box, label, conf in zip(boxes, labels, confidences):
-            if conf < self._config.min_confidence:
-                logger.debug(
-                    "%s: dropping %s (%.2f < %.2f)",
-                    self.name, label, conf, self._config.min_confidence,
-                )
+        for item in response["Labels"]:
+            if "Instances" not in item:
                 continue
-            detections.append(
-                Detection(
-                    label=label,
-                    confidence=conf,
-                    bbox=BBox(x1=box[0], y1=box[1], x2=box[2], y2=box[3]),
-                    model_name=self.name,
-                    detection_type="object",
+            for instance in item["Instances"]:
+                if "BoundingBox" not in instance or "Confidence" not in instance:
+                    continue
+                label = item["Name"].lower()
+                conf = instance["Confidence"] / 100
+                bb = instance["BoundingBox"]
+                detections.append(
+                    Detection(
+                        label=label,
+                        confidence=conf,
+                        bbox=BBox(
+                            x1=round(width * bb["Left"]),
+                            y1=round(height * bb["Top"]),
+                            x2=round(width * (bb["Left"] + bb["Width"])),
+                            y2=round(height * (bb["Top"] + bb["Height"])),
+                        ),
+                        model_name=self.name,
+                        detection_type="object",
+                    )
                 )
-            )
         return detections
-
-    # -- internal helpers -----------------------------------------------------
-
-    def _build_options(self) -> dict:
-        return {
-            "name": self.name,
-            "object_min_confidence": self._config.min_confidence,
-            "aws_region": self._config.aws_region,
-            "aws_access_key_id": self._config.aws_access_key_id,
-            "aws_secret_access_key": self._config.aws_secret_access_key,
-        }

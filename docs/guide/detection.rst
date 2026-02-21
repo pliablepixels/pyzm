@@ -305,12 +305,13 @@ Architecture overview
      |
      +-- ModelPipeline
      |     |
-     |     +-- YoloBackend        (OpenCV DNN / ONNX)
-     |     +-- CoralBackend       (Coral EdgeTPU)
-     |     +-- FaceDlibBackend    (dlib / face_recognition)
-     |     +-- AlprBackend        (PlateRecognizer / OpenALPR)
-     |     +-- RekognitionBackend (AWS Rekognition)
-     |     +-- BirdnetBackend     (audio bird species ID)
+     |     +-- YoloOnnx / YoloDarknet  (OpenCV DNN — ONNX or Darknet)
+     |     +-- CoralBackend            (Coral EdgeTPU)
+     |     +-- FaceDlibBackend         (dlib / face_recognition)
+     |     +-- FaceTpuBackend          (Coral TPU face detection)
+     |     +-- AlprBackend             (PlateRecognizer / OpenALPR)
+     |     +-- RekognitionBackend      (AWS Rekognition)
+     |     +-- BirdnetBackend          (audio bird species ID)
      |     |
      |     +-- filters (zone, size, pattern, past-detection)
      |
@@ -573,24 +574,36 @@ All backends implement the ``MLBackend`` interface (``load()``,
    * - Backend
      - Framework value
      - Description
-   * - YoloBackend
-     - ``opencv``
-     - OpenCV DNN with Darknet (``.weights``) or ONNX models
+   * - YoloOnnx
+     - ``opencv`` (``.onnx``)
+     - ONNX/Ultralytics YOLO models via OpenCV DNN (letterboxing, end-to-end support)
+   * - YoloDarknet
+     - ``opencv`` (``.weights``)
+     - Legacy Darknet YOLO models (``.weights`` + ``.cfg``) via OpenCV DNN
    * - CoralBackend
      - ``coral_edgetpu``
-     - Google Coral EdgeTPU via ``pycoral``
+     - Google Coral EdgeTPU object detection via ``pycoral``
    * - FaceDlibBackend
      - ``face_dlib``
-     - Face recognition using dlib / ``face_recognition``
+     - Face recognition using dlib / ``face_recognition`` with KNN matching
+   * - FaceTpuBackend
+     - ``face_tpu``
+     - Coral TPU face detection (detection only, no recognition)
    * - AlprBackend
      - ``plate_recognizer``, ``openalpr``
-     - License plate recognition (cloud or local)
+     - License plate recognition (PlateRecognizer cloud, OpenALPR cloud, or OpenALPR command-line)
    * - RekognitionBackend
      - ``aws_rekognition``
      - AWS Rekognition API
    * - BirdnetBackend
      - ``birdnet``
      - Audio bird species identification (6500+ species) via ``birdnet-analyzer``
+
+The YOLO backend is selected automatically based on the weights file extension:
+``.onnx`` files use ``YoloOnnx`` (with letterboxing, end-to-end model support,
+and 640px default input), while ``.weights`` files use ``YoloDarknet`` (with
+416px default input). This dispatch is handled by the ``create_yolo_backend()``
+factory — you just set ``framework: opencv`` and the right backend is chosen.
 
 
 Match and frame strategies

@@ -19,11 +19,13 @@ import pytest
 # ---------------------------------------------------------------------------
 
 def _make_yolo(*, pre_nms_layer: str | None = "pre_nms"):
-    """Build a minimal YoloOnnx-like object with the attrs _parse_native_e2e needs."""
-    from pyzm.ml.yolo_onnx import YoloOnnx
+    """Build a minimal YoloOnnx with the attrs _parse_native_e2e needs."""
+    from pyzm.ml.backends.yolo_onnx import YoloOnnx
+    from pyzm.models.config import ModelConfig
 
+    config = ModelConfig(name="test_yolo", weights="test.onnx", disable_locks=True)
     obj = object.__new__(YoloOnnx)
-    obj.name = "test_yolo"
+    obj._config = config
     obj.net = MagicMock()
     obj.is_native_e2e = True
     obj.pre_nms_layer = pre_nms_layer
