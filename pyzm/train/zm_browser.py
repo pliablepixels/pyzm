@@ -236,7 +236,7 @@ def _zm_connection_form(project_dir: Path) -> None:
         with st.form("zm_connect_form"):
             url = st.text_input(
                 "ZM URL (portal or API)",
-                value=saved.get("url", "http://192.168.50.110/zm"),
+                value=saved.get("url", ""),
                 placeholder="https://zm.example.com/zm",
                 help="Portal URL or API URL -- both work.",
             )
