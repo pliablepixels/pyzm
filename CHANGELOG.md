@@ -3,12 +3,49 @@
 All notable changes to this project will be documented in this file.
 
 
+## [2.1.6] - 2026-02-22
+
+### Bug Fixes
+
+- add path traversal guards and replace ast.literal_eval ([d4a8cb3](https://github.com/pliablepixels/pyzm/commit/d4a8cb3d72d207f104cb3cefe60f5c97d6e2f7de))
+- clamp annotation coords and add auto-label confidence threshold ([780dbd8](https://github.com/pliablepixels/pyzm/commit/780dbd8d7ae19216abb389d57e2d3f06fd8b16cf))
+- stop persisting ZM password in plaintext ([84f80a1](https://github.com/pliablepixels/pyzm/commit/84f80a1c9a4452dc70ae6185328eab4d0dd07a0c))
+- batch size formula, add training resume, fix CSV parsing ([320a5e8](https://github.com/pliablepixels/pyzm/commit/320a5e8761fbf2dc9dedcc24dfa734acdb527aba))
+- fix NameError, inconsistent resize, and dead code in face_train_dlib ([6bfaa68](https://github.com/pliablepixels/pyzm/commit/6bfaa68bb09c2ffec5794aa971114af48538e463))
+- align streamlit version check with setup.py requirement ([7d3dc69](https://github.com/pliablepixels/pyzm/commit/7d3dc6921301dfaed5924fdbb1452d5f046e3d14))
+- move streamlit import to avoid breaking headless mode ([ae46723](https://github.com/pliablepixels/pyzm/commit/ae467237eb613c441c938d69020ac9ec30bd6405))
+- remove hardcoded developer IP from ZM browser default URL ([590a862](https://github.com/pliablepixels/pyzm/commit/590a862ed751937b39da4f95667ab80a707e6b9a))
+- fall back to Storage Id=1 when event's StorageId is invalid ([c9f81b2](https://github.com/pliablepixels/pyzm/commit/c9f81b2b9b0bed8c2dc9e81c363eaf9b389394c6))
+
+### Features
+
+- add --max-per-class CLI option and fix Ultralytics 8.4.x compat ([3a212e0](https://github.com/pliablepixels/pyzm/commit/3a212e031e896ea08104b0666cf5a411fdddc3e0))
+- add bulk approve, undo, and image deletion in review ([c7c67e8](https://github.com/pliablepixels/pyzm/commit/c7c67e873a1c83c4df6bf75d232ddcbcf8a24815))
+- improve training UI with plain-English metrics and onboarding ([1469962](https://github.com/pliablepixels/pyzm/commit/14699621caedb51099486f0925cee23f9977ec92))
+
+### Miscellaneous
+
+- pyzm bump ([d79f60c](https://github.com/pliablepixels/pyzm/commit/d79f60c54ea59d9533d1797830ecab2d58b18342))
+
+### Refactoring
+
+- split app.py into phase-specific panel modules ([4199674](https://github.com/pliablepixels/pyzm/commit/41996748a01ab7a7e7b125d61364d106a00d5039))
+- simplify _event_path to use Storage table directly via StorageId ([d4b7108](https://github.com/pliablepixels/pyzm/commit/d4b710826f032b7dbe35da5239e2f9480f25cb7e))
+
+### Testing
+
+- add pipeline and CLI tests, fill coverage gaps ([19a9bd3](https://github.com/pliablepixels/pyzm/commit/19a9bd31cc2e6f1fd79a2fafed7877535de95d43))
+
 ## [2.1.5] - 2026-02-22
 
 ### Bug Fixes
 
 - fall back to default Storage row when ZM_DIR_EVENTS missing ([cf4d442](https://github.com/pliablepixels/pyzm/commit/cf4d4427010659c57df23ddfb1b3076ca6d354dc))
 - handle StorageId=0 in _event_path by falling back to ZM_DIR_EVENTS ([03e71cb](https://github.com/pliablepixels/pyzm/commit/03e71cbed3e84359ccadb70862571f7b4b3bf253))
+
+### Documentation
+
+- update CHANGELOG for v2.1.5 ([d94b15f](https://github.com/pliablepixels/pyzm/commit/d94b15f5805908feaba068cfe6853407178d1e14))
 
 ## [2.1.4] - 2026-02-22
 
