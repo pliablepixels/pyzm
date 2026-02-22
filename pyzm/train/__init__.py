@@ -41,7 +41,7 @@ def check_dependencies() -> None:
     try:
         import streamlit  # noqa: F401
     except ImportError:
-        missing.append("streamlit>=1.38")
+        missing.append("streamlit>=1.41")
 
     try:
         import streamlit_drawable_canvas  # noqa: F401
