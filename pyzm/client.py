@@ -419,24 +419,42 @@ class ZMClient:
 
         cur = conn.cursor(dictionary=True)
         cur.execute(
-            "SELECT E.MonitorId, E.StartDateTime, "
+            "SELECT E.MonitorId, E.StartDateTime, E.StorageId, "
             "S.Path AS StoragePath, S.Scheme "
-            "FROM Events E JOIN Storage S ON E.StorageId = S.Id "
+            "FROM Events E LEFT JOIN Storage S ON E.StorageId = S.Id "
             "WHERE E.Id=%s",
             (event_id,),
         )
         row = cur.fetchone()
+
+        if not row or not row["StartDateTime"]:
+            cur.close()
+            conn.close()
+            logger.warning("Cannot resolve event path: missing DB fields for event %s", event_id)
+            return None
+
+        storage_path = row.get("StoragePath")
+        scheme = row.get("Scheme")
+
+        if not storage_path:
+            logger.error("Event %s has StorageId=%s which does not map to a valid "
+                         "Storage row — the monitor's storage configuration may be "
+                         "invalid. Falling back to Storage Id=1.",
+                         event_id, row.get("StorageId"))
+            cur.execute(
+                "SELECT Path, Scheme FROM Storage WHERE Id=1"
+            )
+            fallback = cur.fetchone()
+            if fallback and fallback["Path"]:
+                storage_path = fallback["Path"]
+                scheme = fallback.get("Scheme") or scheme
+
         cur.close()
         conn.close()
 
-        if not row or not row["StoragePath"] or not row["StartDateTime"]:
-            logger.warning("Cannot resolve event path: missing DB fields for event %s "
-                           "(check that the monitor's StorageId points to a valid Storage row)",
-                           event_id)
+        if not storage_path:
+            logger.warning("Cannot resolve event path: no storage path for event %s", event_id)
             return None
-
-        storage_path = row["StoragePath"]
-        scheme = row.get("Scheme")
 
         monitor_id = row["MonitorId"]
         scheme = (scheme or "Medium").capitalize()
