@@ -5,23 +5,18 @@ import pickle
 from sklearn import neighbors
 import imutils
 import math
-import ssl
+
 import os
-import datetime
 import time as _time
 import logging
 
 logger = logging.getLogger("pyzm")
 
-g_start = datetime.datetime.now()
 import face_recognition
-g_diff_time = (datetime.datetime.now() - g_start)
 
 class FaceTrain:
 
     def __init__(self, options={}):
-        global g_diff_time
-
         self.options = options
 
     def train(self,size=None):
@@ -99,8 +94,8 @@ class FaceTrain:
 
                     if not size:
                         size = int(self.options.get('resize',800))
-                        logger.debug('resizing to {}'.format(size))
-                        known_face = imutils.resize(known_face,width=size)
+                    logger.debug('resizing to {}'.format(size))
+                    known_face = imutils.resize(known_face,width=size)
                     # Convert the image from BGR color (which OpenCV uses) to RGB color (which face_recognition uses)
                     known_face = known_face[:, :, ::-1]
                     face_locations = face_recognition.face_locations(
@@ -111,7 +106,7 @@ class FaceTrain:
                     if len(face_locations) != 1:
                         logger.error(
                                     'File {} has {} faces, cannot use for training. We need exactly 1 face. If you think you have only 1 face try using "cnn" for training mode. Ignoring...'
-                                    .format(person), len(face_locations))
+                                    .format(entry, len(face_locations)))
                     else:
                         face_encodings = face_recognition.face_encodings(
                             known_face,
@@ -140,9 +135,8 @@ class FaceTrain:
             logger.debug('Training model ...')
             knn.fit(known_face_encodings, known_face_names)
 
-            f = open(encoding_file_name, "wb")
-            pickle.dump(knn, f)
-            f.close()
+            with open(encoding_file_name, "wb") as f:
+                pickle.dump(knn, f)
             logger.debug('wrote encoding file: {}'.format(encoding_file_name))
         diff_time = f"{(_time.perf_counter() - _t0) * 1000:.2f} ms"
         logger.debug('perf: Face Recognition training took: {}'.format(diff_time))
