@@ -788,3 +788,113 @@ class TestImportLocalDatasetDirect:
 
         assert len(calls) == 3
         assert calls[-1] == (3, 3)
+
+
+# ---------------------------------------------------------------------------
+# max_per_class
+# ---------------------------------------------------------------------------
+
+def _make_multiclass_folder(tmp_path: Path) -> tuple[Path, dict[int, str]]:
+    """Create a dataset with varied per-class distributions.
+
+    Layout (6 images, 3 classes):
+      img000: class 0 only
+      img001: class 0 only
+      img002: class 0 + class 1
+      img003: class 1 only
+      img004: class 1 + class 2
+      img005: class 2 only
+    """
+    folder = tmp_path / "multiclass_ds"
+    folder.mkdir()
+    names = {0: "cat", 1: "dog", 2: "bird"}
+    (folder / "data.yaml").write_text(f"names: {names}\n")
+
+    img_dir = folder / "images"
+    lbl_dir = folder / "labels"
+    img_dir.mkdir()
+    lbl_dir.mkdir()
+
+    from PIL import Image
+
+    labels = [
+        "0 0.5 0.5 0.2 0.3\n",                          # img000: class 0
+        "0 0.3 0.3 0.1 0.1\n",                          # img001: class 0
+        "0 0.5 0.5 0.2 0.3\n1 0.7 0.7 0.1 0.1\n",      # img002: class 0+1
+        "1 0.4 0.4 0.2 0.2\n",                          # img003: class 1
+        "1 0.5 0.5 0.2 0.3\n2 0.3 0.3 0.1 0.1\n",      # img004: class 1+2
+        "2 0.6 0.6 0.15 0.15\n",                        # img005: class 2
+    ]
+
+    for i, lbl_text in enumerate(labels):
+        img = Image.new("RGB", (100, 100), "red")
+        img.save(str(img_dir / f"img{i:03d}.jpg"))
+        (lbl_dir / f"img{i:03d}.txt").write_text(lbl_text)
+
+    return folder, names
+
+
+class TestMaxPerClass:
+    @pytest.fixture
+    def workspace(self, tmp_path):
+        pdir = tmp_path / "workspace"
+        ds = YOLODataset(project_dir=pdir, classes=[])
+        ds.init_project()
+        store = VerificationStore(pdir)
+        return ds, store
+
+    def test_max_per_class_limits(self, tmp_path, workspace):
+        """max_per_class=1 keeps only the first image per class."""
+        ds, store = workspace
+        folder, names_map = _make_multiclass_folder(tmp_path)
+        splits = [(folder / "images", folder / "labels")]
+
+        img_count, det_count = import_local_dataset(
+            ds, store, splits, names_map, max_per_class=1,
+        )
+
+        # class 0 → img000, class 1 → img002, class 2 → img004
+        # img002 covers both class 0 and 1, but class 0's first is img000
+        # so selected indices: {0, 2, 4} → 3 images
+        assert img_count == 3
+
+    def test_max_per_class_overlapping_classes(self, tmp_path, workspace):
+        """Images with multiple classes are de-duplicated."""
+        ds, store = workspace
+        folder, names_map = _make_multiclass_folder(tmp_path)
+        splits = [(folder / "images", folder / "labels")]
+
+        img_count, _ = import_local_dataset(
+            ds, store, splits, names_map, max_per_class=2,
+        )
+
+        # class 0: img000, img001  class 1: img002, img003  class 2: img004, img005
+        # unique: {0, 1, 2, 3, 4, 5} → 6 images (all of them)
+        assert img_count == 6
+
+    def test_max_per_class_zero_imports_all(self, tmp_path, workspace):
+        """max_per_class=0 (default) imports everything."""
+        ds, store = workspace
+        folder, names_map = _make_multiclass_folder(tmp_path)
+        splits = [(folder / "images", folder / "labels")]
+
+        img_count, _ = import_local_dataset(
+            ds, store, splits, names_map, max_per_class=0,
+        )
+
+        assert img_count == 6
+
+    def test_max_per_class_with_max_images(self, tmp_path, workspace):
+        """max_images applies as a global cap after per-class selection."""
+        ds, store = workspace
+        folder, names_map = _make_multiclass_folder(tmp_path)
+        splits = [(folder / "images", folder / "labels")]
+
+        img_count, _ = import_local_dataset(
+            ds, store, splits, names_map,
+            max_per_class=2,
+            max_images=2,
+        )
+
+        # per-class selects 6 images, then max_images caps to 2
+        assert img_count == 2

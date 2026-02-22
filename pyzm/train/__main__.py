@@ -65,6 +65,12 @@ def main() -> None:
         default="auto",
         help="Device: auto, cpu, cuda:0, etc. (default: auto)",
     )
+    ap.add_argument(
+        "--max-per-class",
+        type=int,
+        default=0,
+        help="Max images per class to import (default: 0 = all)",
+    )
 
     # --- Shared flag ---
     ap.add_argument(
@@ -125,6 +131,7 @@ def _run_headless(args: argparse.Namespace) -> None:
             val_ratio=args.val_ratio,
             output=output,
             device=args.device,
+            max_per_class=args.max_per_class,
         )
     except (ValueError, FileNotFoundError) as exc:
         print(f"Error: {exc}", file=sys.stderr)

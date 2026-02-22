@@ -191,12 +191,52 @@ def _infer_split(img_path: Path, images_dir: Path) -> str | None:
     return None
 
 
+def _select_by_class(
+    all_files: list[tuple[Path, Path, Path]],
+    max_per_class: int,
+) -> list[tuple[Path, Path, Path]]:
+    """Return a subset of *all_files* with at most *max_per_class* images per class.
+
+    Scans each label file to discover which class IDs it contains, then
+    keeps the first *max_per_class* images for every class.  Because an
+    image can contain multiple classes, the final set is de-duplicated.
+    """
+    from collections import defaultdict
+
+    class_to_files: dict[int, list[int]] = defaultdict(list)
+
+    for idx, (img_path, images_dir, labels_dir) in enumerate(all_files):
+        label_path = _find_matching_label(img_path, images_dir, labels_dir)
+        if not label_path:
+            continue
+        seen_classes: set[int] = set()
+        for line in label_path.read_text().strip().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                class_id = int(line.split()[0])
+            except (ValueError, IndexError):
+                continue
+            if class_id not in seen_classes:
+                seen_classes.add(class_id)
+                class_to_files[class_id].append(idx)
+
+    selected: set[int] = set()
+    for class_id in sorted(class_to_files):
+        for idx in class_to_files[class_id][:max_per_class]:
+            selected.add(idx)
+
+    return [all_files[i] for i in sorted(selected)]
+
+
 def import_local_dataset(
     ds: YOLODataset,
     store: VerificationStore,
     splits: list[tuple[Path, Path]],
     names_map: dict[int, str],
     max_images: int = 0,
+    max_per_class: int = 0,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> tuple[int, int]:
     """Import images and labels from one or more (images_dir, labels_dir) pairs.
@@ -209,6 +249,10 @@ def import_local_dataset(
     ----------
     max_images:
         If > 0, import at most this many images (randomly sampled).
+    max_per_class:
+        If > 0, keep at most this many images per class ID before
+        applying *max_images*.  Images with multiple classes count
+        toward every class they contain.
     progress_callback:
         Optional ``(current, total)`` callback invoked after each image.
 
@@ -222,6 +266,9 @@ def import_local_dataset(
 
     if not all_files:
         return 0, 0
+
+    if max_per_class > 0:
+        all_files = _select_by_class(all_files, max_per_class)
 
     if max_images > 0 and len(all_files) > max_images:
         import random

@@ -440,11 +440,20 @@ def _training_analysis(result: TrainResult, train_dir: Path) -> None:
                 "what the model detected. Compare them — missed objects or wrong "
                 "labels indicate classes that need more training data."
             )
+
+            @st.dialog("Validation Sample", width="large")
+            def _show_full(path: str, caption: str):
+                st.image(path, caption=caption, width="stretch")
+
             c1, c2 = st.columns(2)
             if val_labels.exists():
                 c1.image(str(val_labels), caption="Ground Truth", width="stretch")
+                if c1.button("Expand", key="expand_gt", icon=":material/zoom_in:"):
+                    _show_full(str(val_labels), "Ground Truth")
             if val_preds.exists():
                 c2.image(str(val_preds), caption="Predictions", width="stretch")
+                if c2.button("Expand", key="expand_pred", icon=":material/zoom_in:"):
+                    _show_full(str(val_preds), "Predictions")
 
 
 def _phase_export(args: argparse.Namespace) -> None:

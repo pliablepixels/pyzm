@@ -173,7 +173,16 @@ class YOLOTrainer:
             dest = self.project_dir / Path(model_path).name
             if not dest.exists():
                 from ultralytics.utils.downloads import attempt_download_asset
-                attempt_download_asset(str(dest))
+                # Download into project_dir; attempt_download_asset may
+                # ignore the directory component, so pass the bare
+                # filename and use a cwd guard as a fallback.
+                import os
+                original_cwd = os.getcwd()
+                os.chdir(self.project_dir)
+                try:
+                    attempt_download_asset(Path(model_path).name)
+                finally:
+                    os.chdir(original_cwd)
             model_path = str(dest)
 
         self._model = YOLO(model_path)
@@ -272,17 +281,23 @@ class YOLOTrainer:
             m = getattr(vm, "metrics", None)
             if m is None:
                 return
+
+            # Use results_dict (stable across Ultralytics versions);
+            # map50/map properties were removed in 8.4.x.
+            rd = getattr(m, "results_dict", None) or {}
             final_metrics = {
-                "map50": float(getattr(m, "map50", 0.0)),
-                "map": float(getattr(m, "map", 0.0)),
+                "map50": float(rd.get("metrics/mAP50(B)", 0.0)),
+                "map": float(rd.get("metrics/mAP50-95(B)", 0.0)),
                 "per_class": {},
             }
             names = getattr(m, "names", {}) or getattr(trainer.model, "names", {})
             box = getattr(m, "box", None)
             if box is not None:
-                for i in box.ap_class_index:
-                    p, r, ap50, ap = m.class_result(i)
-                    cls_name = names.get(i, f"class_{i}")
+                # ap_class_index holds class IDs; class_result() takes
+                # an array position (changed in Ultralytics 8.4.x).
+                for pos, cls_id in enumerate(box.ap_class_index):
+                    p, r, ap50, ap = m.class_result(pos)
+                    cls_name = names.get(int(cls_id), f"class_{cls_id}")
                     final_metrics["per_class"][cls_name] = ClassMetrics(
                         precision=float(p),
                         recall=float(r),
@@ -291,6 +306,13 @@ class YOLOTrainer:
                     )
 
         model.add_callback("on_train_end", _on_train_end)
+
+        # Run training from the project directory so Ultralytics
+        # side-effects (e.g. AMP check downloading yolo26n.pt) don't
+        # pollute the user's working directory.
+        import os
+        original_cwd = os.getcwd()
+        os.chdir(self.project_dir)
 
         start = time.monotonic()
         try:
@@ -325,6 +347,8 @@ class YOLOTrainer:
             progress.message = "Training complete"
             if progress_callback:
                 progress_callback(progress)
+        finally:
+            os.chdir(original_cwd)
 
         elapsed = time.monotonic() - start
 

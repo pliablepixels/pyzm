@@ -106,6 +106,7 @@ Full flags:
        --val-ratio 0.2 \
        --device cuda:0 \
        --project-name my_project \
+       --max-per-class 50 \
        --output /tmp/model.onnx
 
 CLI options (headless mode):
@@ -137,6 +138,12 @@ CLI options (headless mode):
 ``--device``
    ``auto``, ``cpu``, ``cuda:0``, etc. Default: ``auto``
 
+``--max-per-class``
+   Limit the import to at most this many images per class. Useful for
+   large datasets where you want balanced representation without
+   importing everything. Applied before ``--val-ratio`` splitting.
+   Default: ``0`` (import all).
+
 ``--workspace-dir``
    Override the project storage directory.
    Default: ``~/.pyzm/training``
@@ -152,6 +159,7 @@ Programmatic usage:
        Path("/path/to/yolo-dataset"),
        epochs=50,
        model="yolo11s",
+       max_per_class=50,  # 0 = import all (default)
    )
    print(f"mAP50: {result.final_mAP50:.4f}")
 

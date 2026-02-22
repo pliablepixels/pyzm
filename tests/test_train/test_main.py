@@ -132,6 +132,7 @@ class TestRunHeadless:
             project_name=None,
             device="auto",
             workspace_dir=None,
+            max_per_class=0,
         )
 
         with patch("pyzm.train.pipeline.run_pipeline") as mock_rp:
@@ -157,6 +158,7 @@ class TestRunHeadless:
             project_name=None,
             device="auto",
             workspace_dir=None,
+            max_per_class=0,
         )
 
         with patch("pyzm.train.pipeline.run_pipeline", side_effect=ValueError("bad")):

@@ -36,6 +36,7 @@ def run_pipeline(
     val_ratio: float = 0.2,
     output: Path | None = None,
     device: str = "auto",
+    max_per_class: int = 0,
 ) -> TrainResult:
     """Run the full training pipeline headlessly.
 
@@ -63,6 +64,8 @@ def run_pipeline(
         ONNX export path. ``None`` = auto in project dir.
     device:
         ``"auto"``, ``"cpu"``, or ``"cuda:0"`` etc.
+    max_per_class:
+        If > 0, keep at most this many images per class before importing.
     """
     dataset_path = Path(dataset_path).resolve()
     workspace = Path(workspace_dir) if workspace_dir else _DEFAULT_WORKSPACE
@@ -89,7 +92,9 @@ def run_pipeline(
 
     print("Importing dataset...")
     img_count, det_count = import_local_dataset(
-        ds, store, splits, names_map, progress_callback=_print_progress,
+        ds, store, splits, names_map,
+        max_per_class=max_per_class,
+        progress_callback=_print_progress,
     )
     print(f"  {img_count} images, {det_count} annotations")
 
