@@ -189,12 +189,15 @@ def _read_model_classes(model_path: str) -> list[str]:
     if not p.exists() or p.suffix != ".onnx":
         return []
     try:
-        import ast
         import onnx
         model = onnx.load(str(p))
         meta = {prop.key: prop.value for prop in model.metadata_props}
         if "names" in meta:
-            names_dict = ast.literal_eval(meta["names"])
+            try:
+                names_dict = json.loads(meta["names"])
+            except (json.JSONDecodeError, ValueError):
+                import ast
+                names_dict = ast.literal_eval(meta["names"])
             return [names_dict[i] for i in sorted(names_dict)]
     except Exception:
         pass
@@ -1926,9 +1929,18 @@ def _project_selector() -> Path | None:
         if not name:
             st.error("Enter a project name.")
             return None
+        if len(name) > 100:
+            st.error("Project name too long (max 100 characters).")
+            return None
         # Sanitise: allow alphanumeric, dashes, underscores
         safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
-        pdir = PROJECTS_ROOT / safe_name
+        if ".." in safe_name or "/" in safe_name:
+            st.error("Invalid project name.")
+            return None
+        pdir = (PROJECTS_ROOT / safe_name).resolve()
+        if not str(pdir).startswith(str(PROJECTS_ROOT.resolve())):
+            st.error("Invalid project name.")
+            return None
         if pdir.exists():
             st.error(f"Project '{safe_name}' already exists.")
             return None
