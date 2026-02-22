@@ -196,7 +196,30 @@ Install these into the venv as needed for your detection pipeline:
 .. code-block:: bash
 
    /opt/zoneminder/venv/bin/pip install birdnet-analyzer  # BirdNET audio
-   /opt/zoneminder/venv/bin/pip install face_recognition   # dlib face recognition
+
+**Face recognition (dlib)** — takes a while and installs a lot of dependencies,
+which is why it is not included automatically:
+
+.. code-block:: bash
+
+   sudo apt-get install libopenblas-dev liblapack-dev libblas-dev  # not mandatory, but gives a good speed boost
+   /opt/zoneminder/venv/bin/pip install face_recognition            # installs dlib automatically
+
+.. note::
+
+   If you use Google Coral, you can do face *detection* (not recognition) via
+   the Coral libraries and can skip this section.
+
+If you installed ``face_recognition`` earlier **without** the BLAS libraries,
+reinstall both ``dlib`` and ``face_recognition`` so dlib is built with OpenBLAS
+support:
+
+.. code-block:: bash
+
+   /opt/zoneminder/venv/bin/pip uninstall dlib face-recognition
+   sudo apt-get install libopenblas-dev liblapack-dev libblas-dev   # the important part
+   /opt/zoneminder/venv/bin/pip install dlib --verbose --no-cache-dir  # make sure it finds openblas
+   /opt/zoneminder/venv/bin/pip install face_recognition
 
 .. note::
 
