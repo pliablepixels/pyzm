@@ -39,6 +39,7 @@ def detections_to_annotations(
     img_w: int,
     img_h: int,
     class_mapping: dict[str, str] | None = None,
+    min_confidence: float = 0.0,
 ) -> list[Annotation]:
     """Convert DetectionResult detections to Annotation list.
 
@@ -54,11 +55,15 @@ def detections_to_annotations(
         Optional dict mapping source label -> target label, e.g.
         ``{"car": "vehicle", "truck": "vehicle"}``.  If ``None``,
         detections are matched directly against *target_classes*.
+    min_confidence:
+        Skip detections below this confidence threshold.
     """
     annotations: list[Annotation] = []
     target_map = {name.lower(): idx for idx, name in enumerate(target_classes)}
 
     for det in result.detections:
+        if det.confidence < min_confidence:
+            continue
         source = det.label.lower()
 
         # Map source label to target group name
@@ -109,6 +114,7 @@ def auto_label(
     processor: str,
     target_classes: list[str],
     class_mapping: dict[str, str] | None = None,
+    min_confidence: float = 0.3,
 ) -> dict[Path, list[Annotation]]:
     """Run a single YOLO model on images and return pre-annotations.
 
@@ -126,6 +132,9 @@ def auto_label(
         Final ordered class names (group names if grouping is used).
     class_mapping:
         Optional source->target mapping from :func:`build_class_mapping`.
+    min_confidence:
+        Minimum detection confidence to keep (default 0.3, lower than
+        production to catch more candidates for human review).
     """
     import cv2
     from pyzm.ml.detector import Detector
@@ -157,6 +166,7 @@ def auto_label(
             det_result, target_classes,
             img_w=w, img_h=h,
             class_mapping=class_mapping,
+            min_confidence=min_confidence,
         )
         logger.info(
             "Auto-labeled %s: %d annotations",

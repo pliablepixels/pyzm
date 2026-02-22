@@ -123,6 +123,34 @@ class TestDetectionsToAnnotations:
         assert len(anns) == 1
         assert anns[0].class_id == 0  # car -> vehicle
 
+    def test_min_confidence_filters_low(self):
+        """Detections below min_confidence are dropped."""
+        result = DetectionResult(detections=[
+            Detection(label="person", confidence=0.9, bbox=BBox(10, 20, 110, 120)),
+            Detection(label="person", confidence=0.2, bbox=BBox(200, 200, 300, 300)),
+            Detection(label="car", confidence=0.5, bbox=BBox(50, 50, 150, 150)),
+            Detection(label="car", confidence=0.1, bbox=BBox(300, 300, 400, 400)),
+        ])
+        anns = detections_to_annotations(
+            result, ["person", "car"],
+            img_w=640, img_h=480,
+            min_confidence=0.3,
+        )
+        assert len(anns) == 2
+        # Only person@0.9 and car@0.5 survive
+        assert anns[0].class_id == 0  # person
+        assert anns[1].class_id == 1  # car
+
+    def test_min_confidence_zero_keeps_all(self):
+        """min_confidence=0.0 keeps everything (default)."""
+        result = DetectionResult(detections=[
+            Detection(label="person", confidence=0.01, bbox=BBox(10, 20, 110, 120)),
+        ])
+        anns = detections_to_annotations(
+            result, ["person"], img_w=640, img_h=480, min_confidence=0.0,
+        )
+        assert len(anns) == 1
+
 
 # ---------------------------------------------------------------------------
 # build_class_mapping

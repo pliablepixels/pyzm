@@ -29,6 +29,27 @@ class TestAnnotation:
         assert a.cx == pytest.approx(0.512345)
         assert a.cy == pytest.approx(0.678901)
 
+    def test_clamps_out_of_range_high(self):
+        a = Annotation(class_id=0, cx=1.2, cy=1.5, w=2.0, h=1.1)
+        assert a.cx == 1.0
+        assert a.cy == 1.0
+        assert a.w == 1.0
+        assert a.h == 1.0
+
+    def test_clamps_out_of_range_low(self):
+        a = Annotation(class_id=0, cx=-0.1, cy=-0.5, w=-0.3, h=-1.0)
+        assert a.cx == 0.0
+        assert a.cy == 0.0
+        assert a.w == 0.0
+        assert a.h == 0.0
+
+    def test_clamp_preserves_valid_values(self):
+        a = Annotation(class_id=1, cx=0.5, cy=0.3, w=0.2, h=0.4)
+        assert a.cx == pytest.approx(0.5)
+        assert a.cy == pytest.approx(0.3)
+        assert a.w == pytest.approx(0.2)
+        assert a.h == pytest.approx(0.4)
+
     def test_roundtrip(self):
         orig = Annotation(class_id=1, cx=0.55, cy=0.45, w=0.3, h=0.6)
         line = orig.to_yolo_line()
@@ -358,6 +379,37 @@ class TestQualityReport:
         assert report.per_class["person"] == 2
         assert report.per_class["car"] == 1
         assert report.per_class["package"] == 0
+
+    def test_imbalance_single_aggregate_warning(self, tmp_path: Path, sample_images: list[Path]):
+        """Imbalance should produce exactly one aggregate warning, not one per class."""
+        ds = YOLODataset(
+            project_dir=tmp_path / "imbalance_proj",
+            classes=["person", "car", "package"],
+        )
+        ds.init_project()
+        # person: 40 annotations, car: 5, package: 3  => imbalanced
+        for i, img in enumerate(sample_images):
+            anns = []
+            # 4 person annotations per image = 40 total
+            for _ in range(4):
+                anns.append(Annotation(class_id=0, cx=0.5, cy=0.5, w=0.3, h=0.3))
+            if i < 5:
+                anns.append(Annotation(class_id=1, cx=0.2, cy=0.2, w=0.1, h=0.1))
+            if i < 3:
+                anns.append(Annotation(class_id=2, cx=0.8, cy=0.8, w=0.1, h=0.1))
+            ds.add_image(img, anns)
+
+        report = ds.quality_report()
+        imbalance_warnings = [
+            w for w in report.warnings if "imbalance" in w.message.lower()
+        ]
+        assert len(imbalance_warnings) == 1, (
+            f"Expected 1 aggregate imbalance warning, got {len(imbalance_warnings)}: "
+            f"{[w.message for w in imbalance_warnings]}"
+        )
+        msg = imbalance_warnings[0].message
+        assert "person" in msg  # dominant
+        assert "package" in msg  # most underrepresented
 
     def test_empty_dataset(self, dataset: YOLODataset):
         report = dataset.quality_report()

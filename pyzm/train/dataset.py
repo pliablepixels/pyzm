@@ -37,6 +37,12 @@ class Annotation:
     w: float   # width, normalised 0-1
     h: float   # height, normalised 0-1
 
+    def __post_init__(self) -> None:
+        self.cx = max(0.0, min(1.0, self.cx))
+        self.cy = max(0.0, min(1.0, self.cy))
+        self.w = max(0.0, min(1.0, self.w))
+        self.h = max(0.0, min(1.0, self.h))
+
     def to_yolo_line(self) -> str:
         return f"{self.class_id} {self.cx:.6f} {self.cy:.6f} {self.w:.6f} {self.h:.6f}"
 
@@ -426,15 +432,21 @@ class YOLODataset:
                         ),
                     ))
 
-                # Imbalance check
-                if count > 0 and max_count / count > 3:
-                    dominant = max(per_class, key=per_class.get)  # type: ignore[arg-type]
-                    report.warnings.append(QualityWarning(
-                        level="warning",
-                        message=(
-                            f"Class imbalance: '{dominant}' has "
-                            f"{max_count / count:.0f}x more images than '{cls}'."
-                        ),
-                    ))
+            # Imbalance check — collect all underrepresented classes
+            dominant = max(per_class, key=per_class.get)  # type: ignore[arg-type]
+            underrep = [
+                cls for cls, count in per_class.items()
+                if count > 0 and max_count / count > 3
+            ]
+            if underrep:
+                worst = min(underrep, key=lambda c: per_class[c])
+                report.warnings.append(QualityWarning(
+                    level="warning",
+                    message=(
+                        f"Class imbalance: '{dominant}' dominates; "
+                        f"most underrepresented is '{worst}' "
+                        f"({max_count // per_class[worst]}x fewer)."
+                    ),
+                ))
 
         return report
