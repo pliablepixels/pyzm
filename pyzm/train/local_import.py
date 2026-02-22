@@ -15,7 +15,6 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
-import streamlit as st
 import yaml
 
 from pyzm.train.dataset import Annotation, YOLODataset
@@ -33,6 +32,8 @@ _IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
 def _folder_picker(session_key: str, label: str = "Browse") -> None:
     """Inline folder navigator with cascading selectboxes."""
+    import streamlit as st
+
     nav_key = f"_nav_{session_key}"
 
     # Sync: if the user typed a valid directory in the text input, start there
@@ -291,6 +292,8 @@ def _import_local_dataset(
     max_images: int = 0,
 ) -> tuple[int, int]:
     """Streamlit wrapper around :func:`import_local_dataset`."""
+    import streamlit as st
+
     progress = st.progress(0, text="Importing local dataset...")
 
     def _cb(current: int, total: int) -> None:
@@ -309,6 +312,8 @@ def local_dataset_panel(
     args,
 ) -> None:
     """Streamlit panel for importing a local YOLO dataset."""
+    import streamlit as st
+
     folder_path = st.text_input(
         "Path to YOLO dataset folder",
         placeholder="/path/to/my_dataset",
@@ -434,6 +439,8 @@ def _import_raw_images(
     max_images: int = 0,
 ) -> int:
     """Streamlit wrapper around :func:`import_raw_images`."""
+    import streamlit as st
+
     progress = st.progress(0, text="Importing raw images...")
 
     def _cb(current: int, total: int) -> None:
@@ -452,6 +459,8 @@ def raw_images_panel(
     args: argparse.Namespace,
 ) -> None:
     """Streamlit panel for importing raw (unannotated) images."""
+    import streamlit as st
+
     method = st.radio(
         "Import method",
         ["Upload Images", "Server Folder"],
