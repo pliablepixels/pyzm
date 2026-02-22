@@ -13,6 +13,8 @@ from pyzm.train.local_import import (
     _import_local_dataset,
     _import_raw_images,
     _infer_split,
+    import_local_dataset,
+    import_raw_images,
     validate_yolo_folder,
 )
 from pyzm.train.verification import (
@@ -632,3 +634,157 @@ class TestImportRawImages:
             img_count = _import_raw_images(ds, store, folder)
 
         assert img_count == 0
+
+
+# ---------------------------------------------------------------------------
+# import_raw_images (non-Streamlit, direct function)
+# ---------------------------------------------------------------------------
+
+class TestImportRawImagesDirect:
+    """Test the public import_raw_images() function directly (no Streamlit)."""
+
+    @pytest.fixture
+    def workspace(self, tmp_path):
+        pdir = tmp_path / "workspace"
+        ds = YOLODataset(project_dir=pdir, classes=[])
+        ds.init_project()
+        store = VerificationStore(pdir)
+        return ds, store
+
+    def test_import_basic(self, tmp_path, workspace):
+        """Images are imported with empty detections and fully_reviewed=False."""
+        ds, store = workspace
+        folder = _make_raw_images_folder(tmp_path, count=4)
+
+        img_count = import_raw_images(ds, store, folder)
+
+        assert img_count == 4
+        staged = ds.staged_images()
+        assert len(staged) == 4
+
+        for img in staged:
+            iv = store.get(img.name)
+            assert iv is not None
+            assert iv.fully_reviewed is False
+            assert len(iv.detections) == 0
+
+    def test_import_empty_folder(self, tmp_path, workspace):
+        ds, store = workspace
+        folder = tmp_path / "empty"
+        folder.mkdir()
+
+        img_count = import_raw_images(ds, store, folder)
+        assert img_count == 0
+
+    def test_max_images_limits_import(self, tmp_path, workspace):
+        """max_images parameter limits the number of imported images."""
+        ds, store = workspace
+        folder = _make_raw_images_folder(tmp_path, count=10)
+
+        img_count = import_raw_images(ds, store, folder, max_images=3)
+
+        assert img_count == 3
+        assert len(ds.staged_images()) == 3
+
+    def test_max_images_zero_imports_all(self, tmp_path, workspace):
+        """max_images=0 (default) imports all images."""
+        ds, store = workspace
+        folder = _make_raw_images_folder(tmp_path, count=5)
+
+        img_count = import_raw_images(ds, store, folder, max_images=0)
+        assert img_count == 5
+
+    def test_max_images_larger_than_total(self, tmp_path, workspace):
+        """max_images larger than available images imports all."""
+        ds, store = workspace
+        folder = _make_raw_images_folder(tmp_path, count=3)
+
+        img_count = import_raw_images(ds, store, folder, max_images=100)
+        assert img_count == 3
+
+    def test_progress_callback(self, tmp_path, workspace):
+        """progress_callback is invoked for each imported image."""
+        ds, store = workspace
+        folder = _make_raw_images_folder(tmp_path, count=3)
+
+        calls = []
+        import_raw_images(
+            ds, store, folder,
+            progress_callback=lambda cur, tot: calls.append((cur, tot)),
+        )
+
+        assert len(calls) == 3
+        assert calls[0] == (1, 3)
+        assert calls[1] == (2, 3)
+        assert calls[2] == (3, 3)
+
+    def test_verification_store_persisted(self, tmp_path, workspace):
+        """Verification data is saved to disk after import."""
+        ds, store = workspace
+        folder = _make_raw_images_folder(tmp_path, count=2)
+
+        import_raw_images(ds, store, folder)
+
+        # Reload from disk to verify persistence
+        store2 = VerificationStore(ds.project_dir)
+        staged = ds.staged_images()
+        for img in staged:
+            iv = store2.get(img.name)
+            assert iv is not None
+
+
+# ---------------------------------------------------------------------------
+# import_local_dataset (non-Streamlit, direct function)
+# ---------------------------------------------------------------------------
+
+class TestImportLocalDatasetDirect:
+    """Test the public import_local_dataset() function directly (no Streamlit)."""
+
+    @pytest.fixture
+    def workspace(self, tmp_path):
+        pdir = tmp_path / "workspace"
+        ds = YOLODataset(project_dir=pdir, classes=[])
+        ds.init_project()
+        store = VerificationStore(pdir)
+        return ds, store
+
+    def test_import_flat(self, tmp_path, workspace):
+        ds, store = workspace
+        folder = _make_yolo_folder(tmp_path, flat=True)
+        names_map = {0: "person", 1: "car"}
+        splits = [(folder / "images", folder / "labels")]
+
+        img_count, det_count = import_local_dataset(
+            ds, store, splits, names_map,
+        )
+
+        assert img_count == 3
+        assert det_count == 6
+
+    def test_max_images(self, tmp_path, workspace):
+        ds, store = workspace
+        folder = _make_yolo_folder(tmp_path, flat=True)
+        names_map = {0: "person", 1: "car"}
+        splits = [(folder / "images", folder / "labels")]
+
+        img_count, det_count = import_local_dataset(
+            ds, store, splits, names_map, max_images=2,
+        )
+
+        assert img_count == 2
+        assert det_count == 4  # 2 detections per image
+
+    def test_progress_callback(self, tmp_path, workspace):
+        ds, store = workspace
+        folder = _make_yolo_folder(tmp_path, flat=True)
+        names_map = {0: "person", 1: "car"}
+        splits = [(folder / "images", folder / "labels")]
+
+        calls = []
+        import_local_dataset(
+            ds, store, splits, names_map,
+            progress_callback=lambda cur, tot: calls.append((cur, tot)),
+        )
+
+        assert len(calls) == 3
+        assert calls[-1] == (3, 3)
