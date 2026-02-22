@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 
 
+## [2.1.5] - 2026-02-22
+
+### Bug Fixes
+
+- fall back to default Storage row when ZM_DIR_EVENTS missing ([cf4d442](https://github.com/pliablepixels/pyzm/commit/cf4d4427010659c57df23ddfb1b3076ca6d354dc))
+- handle StorageId=0 in _event_path by falling back to ZM_DIR_EVENTS ([03e71cb](https://github.com/pliablepixels/pyzm/commit/03e71cbed3e84359ccadb70862571f7b4b3bf253))
+
 ## [2.1.4] - 2026-02-22
 
 ### Bug Fixes
@@ -11,6 +18,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- update CHANGELOG for v2.1.4 ([9103b6b](https://github.com/pliablepixels/pyzm/commit/9103b6bb8f4084fdf61a6d970f9f3c34c5f903f4))
 - expand face recognition install with BLAS and reinstall steps ([0a1594e](https://github.com/pliablepixels/pyzm/commit/0a1594e2a9342fb2e2c9310a09214b32ec9830e7))
 - took out some arch notes ([539b4ec](https://github.com/pliablepixels/pyzm/commit/539b4ec20669d317ddeb8529c592266ff242179b))
 - comprehensive accuracy and completeness audit of all guide pages ([785c65c](https://github.com/pliablepixels/pyzm/commit/785c65cf78c160bad08dcfc58cd15ee30fda9055))
