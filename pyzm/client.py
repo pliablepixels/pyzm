@@ -419,63 +419,24 @@ class ZMClient:
 
         cur = conn.cursor(dictionary=True)
         cur.execute(
-            "SELECT E.MonitorId, E.StartDateTime, E.StorageId, "
+            "SELECT E.MonitorId, E.StartDateTime, "
             "S.Path AS StoragePath, S.Scheme "
-            "FROM Events E LEFT JOIN Storage S ON E.StorageId = S.Id "
+            "FROM Events E JOIN Storage S ON E.StorageId = S.Id "
             "WHERE E.Id=%s",
             (event_id,),
         )
         row = cur.fetchone()
-
-        if not row or not row["StartDateTime"]:
-            cur.close()
-            conn.close()
-            logger.warning("Cannot resolve event path: missing DB fields for event %s", event_id)
-            return None
-
-        storage_path = row.get("StoragePath")
-        scheme = row.get("Scheme")
-
-        # StorageId=0 means no explicit storage area — fall back to
-        # ZM_DIR_EVENTS from the Config table, mirroring ZM's Perl
-        # Storage.pm behaviour.  If ZM_DIR_EVENTS doesn't exist (newer
-        # ZM versions removed it), fall back to the default Storage row.
-        if not storage_path and not row.get("StorageId"):
-            cur.execute(
-                "SELECT Value FROM Config WHERE Name='ZM_DIR_EVENTS'"
-            )
-            cfg_row = cur.fetchone()
-            if cfg_row and cfg_row["Value"]:
-                dir_events = cfg_row["Value"]
-                if dir_events.startswith("/"):
-                    storage_path = dir_events
-                else:
-                    # Relative path — prefix with ZM_PATH_WEB
-                    cur.execute(
-                        "SELECT Value FROM Config WHERE Name='ZM_PATH_WEB'"
-                    )
-                    web_row = cur.fetchone()
-                    web_path = (web_row["Value"] if web_row and web_row["Value"]
-                                else "/usr/share/zoneminder/www")
-                    storage_path = os.path.join(web_path, dir_events)
-            else:
-                # ZM_DIR_EVENTS missing — use the default Storage area
-                cur.execute(
-                    "SELECT Path, Scheme FROM Storage ORDER BY Id LIMIT 1"
-                )
-                s_row = cur.fetchone()
-                if s_row and s_row["Path"]:
-                    storage_path = s_row["Path"]
-                    scheme = s_row.get("Scheme") or scheme
-            if not scheme:
-                scheme = "Medium"
-
         cur.close()
         conn.close()
 
-        if not storage_path:
-            logger.warning("Cannot resolve event path: no storage path for event %s", event_id)
+        if not row or not row["StoragePath"] or not row["StartDateTime"]:
+            logger.warning("Cannot resolve event path: missing DB fields for event %s "
+                           "(check that the monitor's StorageId points to a valid Storage row)",
+                           event_id)
             return None
+
+        storage_path = row["StoragePath"]
+        scheme = row.get("Scheme")
 
         monitor_id = row["MonitorId"]
         scheme = (scheme or "Medium").capitalize()

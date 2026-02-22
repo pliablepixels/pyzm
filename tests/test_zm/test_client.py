@@ -1256,109 +1256,15 @@ class TestEventOOP:
 
 
 # ===================================================================
-# TestEvent - _event_path (StorageId=0 fallback)
+# TestEvent - _event_path
 # ===================================================================
 
 class TestEventPath:
-    """Tests for _event_path, especially the StorageId=0 fallback."""
+    """Tests for _event_path — path is resolved from the Storage table via StorageId."""
 
     @patch("pyzm.client.ZMAPI")
-    def test_event_path_storage_id_zero_falls_back_to_zm_dir_events(self, mock_zmapi_cls):
-        """When StorageId=0, _event_path should read ZM_DIR_EVENTS from Config."""
-        mock_api = _make_mock_api()
-        mock_api.get.return_value = {"event": _sample_event_api_data(657)}
-        mock_zmapi_cls.return_value = mock_api
-
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-
-        # First query: LEFT JOIN returns row with StorageId=0, no StoragePath
-        # Second query: ZM_DIR_EVENTS config
-        from datetime import datetime
-        mock_cursor.fetchone.side_effect = [
-            {
-                "MonitorId": 5,
-                "StartDateTime": datetime(2026, 2, 22, 8, 29, 19),
-                "StorageId": 0,
-                "StoragePath": None,
-                "Scheme": None,
-            },
-            {"Value": "/var/cache/zoneminder/events"},  # ZM_DIR_EVENTS
-        ]
-
-        from pyzm.client import ZMClient
-        client = ZMClient(api_url="https://zm.example.com/zm/api")
-        client._get_db = MagicMock(return_value=mock_conn)
-
-        path = client._event_path(657)
-        assert path == "/var/cache/zoneminder/events/5/2026-02-22/657"
-
-    @patch("pyzm.client.ZMAPI")
-    def test_event_path_storage_id_zero_relative_dir_events(self, mock_zmapi_cls):
-        """When ZM_DIR_EVENTS is relative, prefix with ZM_PATH_WEB."""
-        mock_api = _make_mock_api()
-        mock_api.get.return_value = {"event": _sample_event_api_data(100)}
-        mock_zmapi_cls.return_value = mock_api
-
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-
-        from datetime import datetime
-        mock_cursor.fetchone.side_effect = [
-            {
-                "MonitorId": 1,
-                "StartDateTime": datetime(2026, 1, 15, 12, 0, 0),
-                "StorageId": 0,
-                "StoragePath": None,
-                "Scheme": None,
-            },
-            {"Value": "events"},           # ZM_DIR_EVENTS (relative)
-            {"Value": "/usr/share/zoneminder/www"},  # ZM_PATH_WEB
-        ]
-
-        from pyzm.client import ZMClient
-        client = ZMClient(api_url="https://zm.example.com/zm/api")
-        client._get_db = MagicMock(return_value=mock_conn)
-
-        path = client._event_path(100)
-        assert path == "/usr/share/zoneminder/www/events/1/2026-01-15/100"
-
-    @patch("pyzm.client.ZMAPI")
-    def test_event_path_storage_id_zero_no_zm_dir_events_falls_back_to_default_storage(self, mock_zmapi_cls):
-        """When StorageId=0 and ZM_DIR_EVENTS doesn't exist, use the default Storage row."""
-        mock_api = _make_mock_api()
-        mock_api.get.return_value = {"event": _sample_event_api_data(709)}
-        mock_zmapi_cls.return_value = mock_api
-
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-
-        from datetime import datetime
-        mock_cursor.fetchone.side_effect = [
-            {
-                "MonitorId": 5,
-                "StartDateTime": datetime(2026, 2, 22, 9, 24, 42),
-                "StorageId": 0,
-                "StoragePath": None,
-                "Scheme": None,
-            },
-            None,  # ZM_DIR_EVENTS not found
-            {"Path": "/var/cache/zoneminder/events", "Scheme": "Medium"},  # default Storage row
-        ]
-
-        from pyzm.client import ZMClient
-        client = ZMClient(api_url="https://zm.example.com/zm/api")
-        client._get_db = MagicMock(return_value=mock_conn)
-
-        path = client._event_path(709)
-        assert path == "/var/cache/zoneminder/events/5/2026-02-22/709"
-
-    @patch("pyzm.client.ZMAPI")
-    def test_event_path_normal_storage_id(self, mock_zmapi_cls):
-        """Normal StorageId (non-zero) uses JOIN result directly."""
+    def test_event_path_medium_scheme(self, mock_zmapi_cls):
+        """Medium scheme: StoragePath/MonitorId/YYYY-MM-DD/EventId."""
         mock_api = _make_mock_api()
         mock_api.get.return_value = {"event": _sample_event_api_data(42)}
         mock_zmapi_cls.return_value = mock_api
@@ -1371,7 +1277,6 @@ class TestEventPath:
         mock_cursor.fetchone.return_value = {
             "MonitorId": 3,
             "StartDateTime": datetime(2026, 3, 10, 14, 30, 0),
-            "StorageId": 1,
             "StoragePath": "/var/cache/zoneminder/events",
             "Scheme": "Medium",
         }
@@ -1385,7 +1290,7 @@ class TestEventPath:
 
     @patch("pyzm.client.ZMAPI")
     def test_event_path_deep_scheme(self, mock_zmapi_cls):
-        """Deep storage scheme produces YY/MM/DD/HH/MM/SS path."""
+        """Deep scheme: StoragePath/MonitorId/YY/MM/DD/HH/MM/SS."""
         mock_api = _make_mock_api()
         mock_api.get.return_value = {"event": _sample_event_api_data(99)}
         mock_zmapi_cls.return_value = mock_api
@@ -1398,7 +1303,6 @@ class TestEventPath:
         mock_cursor.fetchone.return_value = {
             "MonitorId": 2,
             "StartDateTime": datetime(2026, 5, 20, 9, 15, 30),
-            "StorageId": 1,
             "StoragePath": "/data/events",
             "Scheme": "Deep",
         }
@@ -1409,6 +1313,25 @@ class TestEventPath:
 
         path = client._event_path(99)
         assert path == "/data/events/2/26/05/20/09/15/30"
+
+    @patch("pyzm.client.ZMAPI")
+    def test_event_path_missing_storage_returns_none(self, mock_zmapi_cls):
+        """When StorageId doesn't match any Storage row, return None."""
+        mock_api = _make_mock_api()
+        mock_api.get.return_value = {"event": _sample_event_api_data(500)}
+        mock_zmapi_cls.return_value = mock_api
+
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_cursor.fetchone.return_value = None  # JOIN returns nothing
+
+        from pyzm.client import ZMClient
+        client = ZMClient(api_url="https://zm.example.com/zm/api")
+        client._get_db = MagicMock(return_value=mock_conn)
+
+        path = client._event_path(500)
+        assert path is None
 
 
 # ===================================================================
