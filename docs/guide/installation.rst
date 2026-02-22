@@ -88,6 +88,16 @@ OpenCV shim, and ownership in one step.
 If the venv already exists (e.g. created by zmeventnotification's installer),
 the script reuses it and just installs/upgrades pyzm.
 
+**Quick editable install** — if you are making local changes to the pyzm source
+and want to test them immediately without re-running the full setup script:
+
+.. code-block:: bash
+
+   sudo /opt/zoneminder/venv/bin/pip install -e .
+
+This installs pyzm in *editable* (development) mode so the venv picks up your
+source changes directly.
+
 The script will:
 
 1. Install ``python3-venv`` if it is missing (Debian/Ubuntu/Fedora/CentOS).

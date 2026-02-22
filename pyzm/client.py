@@ -438,7 +438,8 @@ class ZMClient:
 
         # StorageId=0 means no explicit storage area — fall back to
         # ZM_DIR_EVENTS from the Config table, mirroring ZM's Perl
-        # Storage.pm behaviour.
+        # Storage.pm behaviour.  If ZM_DIR_EVENTS doesn't exist (newer
+        # ZM versions removed it), fall back to the default Storage row.
         if not storage_path and not row.get("StorageId"):
             cur.execute(
                 "SELECT Value FROM Config WHERE Name='ZM_DIR_EVENTS'"
@@ -457,6 +458,15 @@ class ZMClient:
                     web_path = (web_row["Value"] if web_row and web_row["Value"]
                                 else "/usr/share/zoneminder/www")
                     storage_path = os.path.join(web_path, dir_events)
+            else:
+                # ZM_DIR_EVENTS missing — use the default Storage area
+                cur.execute(
+                    "SELECT Path, Scheme FROM Storage ORDER BY Id LIMIT 1"
+                )
+                s_row = cur.fetchone()
+                if s_row and s_row["Path"]:
+                    storage_path = s_row["Path"]
+                    scheme = s_row.get("Scheme") or scheme
             if not scheme:
                 scheme = "Medium"
 
