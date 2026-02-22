@@ -301,8 +301,8 @@ class TestImportLocalDataset:
         # Mock st.progress since we're not in a Streamlit context
         import unittest.mock as mock
         progress_mock = mock.MagicMock()
-        with mock.patch("pyzm.train.local_import.st") as st_mock:
-            st_mock.progress.return_value = progress_mock
+        with mock.patch("streamlit.progress", return_value=progress_mock):
+            pass  # mock active
 
             img_count, det_count = _import_local_dataset(ds, store, splits, names_map)
 
@@ -331,8 +331,8 @@ class TestImportLocalDataset:
 
         import unittest.mock as mock
         progress_mock = mock.MagicMock()
-        with mock.patch("pyzm.train.local_import.st") as st_mock:
-            st_mock.progress.return_value = progress_mock
+        with mock.patch("streamlit.progress", return_value=progress_mock):
+            pass  # mock active
 
             img_count, det_count = _import_local_dataset(ds, store, splits, names_map)
 
@@ -349,8 +349,8 @@ class TestImportLocalDataset:
 
         import unittest.mock as mock
         progress_mock = mock.MagicMock()
-        with mock.patch("pyzm.train.local_import.st") as st_mock:
-            st_mock.progress.return_value = progress_mock
+        with mock.patch("streamlit.progress", return_value=progress_mock):
+            pass  # mock active
 
             img_count, det_count = _import_local_dataset(ds, store, splits, names_map)
 
@@ -374,8 +374,8 @@ class TestImportLocalDataset:
 
         import unittest.mock as mock
         progress_mock = mock.MagicMock()
-        with mock.patch("pyzm.train.local_import.st") as st_mock:
-            st_mock.progress.return_value = progress_mock
+        with mock.patch("streamlit.progress", return_value=progress_mock):
+            pass  # mock active
 
             img_count, det_count = _import_local_dataset(ds, store, splits, {})
 
@@ -394,8 +394,8 @@ class TestImportLocalDataset:
 
         import unittest.mock as mock
         progress_mock = mock.MagicMock()
-        with mock.patch("pyzm.train.local_import.st") as st_mock:
-            st_mock.progress.return_value = progress_mock
+        with mock.patch("streamlit.progress", return_value=progress_mock):
+            pass  # mock active
 
             img_count, det_count = _import_local_dataset(ds, store, splits, names_map)
 
@@ -414,8 +414,8 @@ class TestImportLocalDataset:
 
         import unittest.mock as mock
         progress_mock = mock.MagicMock()
-        with mock.patch("pyzm.train.local_import.st") as st_mock:
-            st_mock.progress.return_value = progress_mock
+        with mock.patch("streamlit.progress", return_value=progress_mock):
+            pass  # mock active
 
             img_count, det_count = _import_local_dataset(ds, store, splits, names_map)
 
@@ -506,8 +506,8 @@ class TestImportWritesLabels:
 
         import unittest.mock as mock
         progress_mock = mock.MagicMock()
-        with mock.patch("pyzm.train.local_import.st") as st_mock:
-            st_mock.progress.return_value = progress_mock
+        with mock.patch("streamlit.progress", return_value=progress_mock):
+            pass  # mock active
             _import_local_dataset(ds, store, splits, names_map)
 
         # Label files should be non-empty (annotations written at import)
@@ -526,8 +526,8 @@ class TestImportWritesLabels:
 
         import unittest.mock as mock
         progress_mock = mock.MagicMock()
-        with mock.patch("pyzm.train.local_import.st") as st_mock:
-            st_mock.progress.return_value = progress_mock
+        with mock.patch("streamlit.progress", return_value=progress_mock):
+            pass  # mock active
             _import_local_dataset(ds, store, splits, names_map)
 
         split_map = ds.get_setting("split_map")
@@ -547,8 +547,8 @@ class TestImportWritesLabels:
 
         import unittest.mock as mock
         progress_mock = mock.MagicMock()
-        with mock.patch("pyzm.train.local_import.st") as st_mock:
-            st_mock.progress.return_value = progress_mock
+        with mock.patch("streamlit.progress", return_value=progress_mock):
+            pass  # mock active
             _import_local_dataset(ds, store, splits, names_map)
 
         import_classes = ds.get_setting("import_classes")
@@ -563,8 +563,8 @@ class TestImportWritesLabels:
 
         import unittest.mock as mock
         progress_mock = mock.MagicMock()
-        with mock.patch("pyzm.train.local_import.st") as st_mock:
-            st_mock.progress.return_value = progress_mock
+        with mock.patch("streamlit.progress", return_value=progress_mock):
+            pass  # mock active
             _import_local_dataset(ds, store, splits, names_map)
 
         split_map = ds.get_setting("split_map")
@@ -604,8 +604,8 @@ class TestImportRawImages:
         import unittest.mock as mock
 
         progress_mock = mock.MagicMock()
-        with mock.patch("pyzm.train.local_import.st") as st_mock:
-            st_mock.progress.return_value = progress_mock
+        with mock.patch("streamlit.progress", return_value=progress_mock):
+            pass  # mock active
 
             img_count = _import_raw_images(ds, store, folder)
 
@@ -628,8 +628,8 @@ class TestImportRawImages:
         import unittest.mock as mock
 
         progress_mock = mock.MagicMock()
-        with mock.patch("pyzm.train.local_import.st") as st_mock:
-            st_mock.progress.return_value = progress_mock
+        with mock.patch("streamlit.progress", return_value=progress_mock):
+            pass  # mock active
 
             img_count = _import_raw_images(ds, store, folder)
 
