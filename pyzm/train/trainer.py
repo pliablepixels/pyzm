@@ -101,6 +101,10 @@ class YOLOTrainer:
         self._model: Any = None  # ultralytics.YOLO
         self._stop_event = threading.Event()
 
+    def has_checkpoint(self) -> bool:
+        """Return True if a resumable ``last.pt`` checkpoint exists."""
+        return (self.project_dir / "runs" / "train" / "weights" / "last.pt").exists()
+
     # ------------------------------------------------------------------
     # Hardware detection
     # ------------------------------------------------------------------
@@ -114,8 +118,8 @@ class YOLOTrainer:
             if torch.cuda.is_available():
                 props = torch.cuda.get_device_properties(0)
                 vram_gb = props.total_memory / (1024 ** 3)
-                # Rough heuristic: 2GB per batch of 8 at 640px
-                suggested = max(4, min(32, int(vram_gb / 2) * 8))
+                # ~0.5 GB per image at 640px; cap at 64 for high-VRAM GPUs
+                suggested = max(4, min(64, int(vram_gb * 2)))
                 return HardwareInfo(
                     device="cuda:0",
                     gpu_name=props.name,
@@ -185,6 +189,7 @@ class YOLOTrainer:
         epochs: int = 50,
         batch: int = 16,
         imgsz: int = 640,
+        resume: bool = False,
         progress_callback: Callable[[TrainProgress], None] | None = None,
     ) -> TrainResult:
         """Run fine-tuning.
@@ -202,13 +207,31 @@ class YOLOTrainer:
             Batch size.
         imgsz:
             Training image size.
+        resume:
+            If True and a ``last.pt`` checkpoint exists, resume training
+            from that checkpoint instead of starting from scratch.
         progress_callback:
             Called after each epoch with a :class:`TrainProgress` snapshot.
         """
         import time
 
         self._stop_event.clear()
-        model = self._load_model()
+
+        # Resume from checkpoint if requested
+        resume_training = False
+        if resume:
+            last_pt = self.project_dir / "runs" / "train" / "weights" / "last.pt"
+            if last_pt.exists():
+                from ultralytics import YOLO
+                self._model = YOLO(str(last_pt))
+                resume_training = True
+                logger.info("Resuming training from %s", last_pt)
+            else:
+                logger.warning("Resume requested but no last.pt found, starting fresh")
+
+        if not resume_training:
+            self._load_model()
+        model = self._model
 
         device = self.device
         if device == "auto":
@@ -271,7 +294,7 @@ class YOLOTrainer:
 
         start = time.monotonic()
         try:
-            results = model.train(
+            train_kwargs: dict[str, Any] = dict(
                 data=str(dataset_yaml),
                 epochs=epochs,
                 batch=batch,
@@ -282,6 +305,9 @@ class YOLOTrainer:
                 exist_ok=True,
                 verbose=True,
             )
+            if resume_training:
+                train_kwargs["resume"] = True
+            results = model.train(**train_kwargs)
         except KeyboardInterrupt:
             logger.info("Training stopped by user")
             progress.finished = True
@@ -356,11 +382,11 @@ class YOLOTrainer:
         try:
             with open(csv_path) as f:
                 reader = csv.DictReader(f)
+                reader.fieldnames = [name.strip() for name in (reader.fieldnames or [])]
                 best_epoch = 0
                 best_map50 = -1.0
                 for row in reader:
-                    # Column names have leading spaces in Ultralytics output
-                    epoch_str = (row.get("epoch") or row.get("                  epoch") or "").strip()
+                    epoch_str = row.get("epoch", "").strip()
                     map50_str = ""
                     for key in row:
                         if "mAP50(B)" in key and "mAP50-95" not in key:

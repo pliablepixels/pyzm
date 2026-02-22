@@ -231,3 +231,58 @@ class TestReadBestEpoch:
     def test_malformed_csv_returns_zero(self, tmp_path: Path):
         (tmp_path / "results.csv").write_text("not,a,valid,csv\nfoo,bar,baz,qux\n")
         assert YOLOTrainer._read_best_epoch(tmp_path) == 0
+
+    def test_parses_csv_without_leading_spaces(self, tmp_path: Path):
+        """CSV with clean (no leading spaces) column names should also work."""
+        csv_content = (
+            "epoch,train/box_loss,train/cls_loss,metrics/mAP50(B),metrics/mAP50-95(B)\n"
+            "0,1.5000,2.0000,0.100,0.050\n"
+            "1,1.2000,1.5000,0.900,0.500\n"
+            "2,1.0000,1.2000,0.600,0.350\n"
+        )
+        (tmp_path / "results.csv").write_text(csv_content)
+        assert YOLOTrainer._read_best_epoch(tmp_path) == 2
+
+
+# ---------------------------------------------------------------------------
+# Batch size suggestions
+# ---------------------------------------------------------------------------
+
+class TestBatchSizeSuggestion:
+    """Test the batch-size heuristic at various VRAM levels."""
+
+    @pytest.mark.parametrize("vram_gb,expected", [
+        (2.0, 4),    # 2 * 2 = 4, clamped to min 4
+        (4.0, 8),    # 4 * 2 = 8
+        (8.0, 16),   # 8 * 2 = 16
+        (24.0, 48),  # 24 * 2 = 48, under cap of 64
+    ])
+    def test_batch_suggestions(self, vram_gb: float, expected: int):
+        mock_torch = MagicMock()
+        mock_torch.cuda.is_available.return_value = True
+        mock_props = MagicMock()
+        mock_props.name = "Test GPU"
+        mock_props.total_memory = int(vram_gb * (1024 ** 3))
+        mock_torch.cuda.get_device_properties.return_value = mock_props
+
+        with patch.dict("sys.modules", {"torch": mock_torch}):
+            from pyzm.train.trainer import YOLOTrainer as T
+            hw = T.detect_hardware()
+            assert hw.suggested_batch == expected
+
+
+# ---------------------------------------------------------------------------
+# has_checkpoint
+# ---------------------------------------------------------------------------
+
+class TestHasCheckpoint:
+    def test_no_checkpoint(self, tmp_path: Path):
+        trainer = YOLOTrainer("yolo11s", tmp_path)
+        assert trainer.has_checkpoint() is False
+
+    def test_with_checkpoint(self, tmp_path: Path):
+        weights_dir = tmp_path / "runs" / "train" / "weights"
+        weights_dir.mkdir(parents=True)
+        (weights_dir / "last.pt").write_bytes(b"fake checkpoint")
+        trainer = YOLOTrainer("yolo11s", tmp_path)
+        assert trainer.has_checkpoint() is True
