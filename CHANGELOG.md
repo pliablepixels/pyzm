@@ -3,6 +3,32 @@
 All notable changes to this project will be documented in this file.
 
 
+## [2.1.4] - 2026-02-22
+
+### Bug Fixes
+
+- downgrade zm.conf warning to debug when explicit DB creds provided ([b6e0a97](https://github.com/pliablepixels/pyzm/commit/b6e0a978ef6a19a5837bd7e8b18f878f708a8306))
+
+### Documentation
+
+- expand face recognition install with BLAS and reinstall steps ([0a1594e](https://github.com/pliablepixels/pyzm/commit/0a1594e2a9342fb2e2c9310a09214b32ec9830e7))
+- took out some arch notes ([539b4ec](https://github.com/pliablepixels/pyzm/commit/539b4ec20669d317ddeb8529c592266ff242179b))
+- comprehensive accuracy and completeness audit of all guide pages ([785c65c](https://github.com/pliablepixels/pyzm/commit/785c65cf78c160bad08dcfc58cd15ee30fda9055))
+- move raw() section from events page to client page ([3ab58b4](https://github.com/pliablepixels/pyzm/commit/3ab58b447b8a04e042ebf0e2659e8c8ee006fb85))
+- add upgrading section for PyPI and source installs ([0d843c1](https://github.com/pliablepixels/pyzm/commit/0d843c13750ae34c790fa1cf23636881027c2c0b))
+
+### Features
+
+- pass DB credentials through ZMClientConfig ([7324a65](https://github.com/pliablepixels/pyzm/commit/7324a651474da32218643796227b9662b64a7248))
+
+### Miscellaneous
+
+- ver bump ([5f9ee66](https://github.com/pliablepixels/pyzm/commit/5f9ee66a60f8ae98af37f8ac1a5b4bcb11b2ddda))
+
+### Refactoring
+
+- merge legacy ML implementations with backend adapters ([#23](https://github.com/pliablepixels/pyzm/issues/23)) ([583525a](https://github.com/pliablepixels/pyzm/commit/583525a2f0757507d105901470203e2bc9cb4a3e))
+
 ## [2.1.3] - 2026-02-20
 
 ### Bug Fixes
@@ -12,6 +38,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- update CHANGELOG for v2.1.3 ([58bb8fd](https://github.com/pliablepixels/pyzm/commit/58bb8fdf34771fa1d9b7c2f6c7cca0535092751e))
 - restructure sidebar into Getting Started, ZM API, and ML sections ([f5665d1](https://github.com/pliablepixels/pyzm/commit/f5665d19e68fee42f41edb0003579cd57dd5cc49))
 
 ### Miscellaneous
