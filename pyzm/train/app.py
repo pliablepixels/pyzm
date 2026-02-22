@@ -817,13 +817,22 @@ def _review_expanded(
         store.set(iv)
 
     # On-demand auto-detection
+    _ran_autodetect = False
     if auto_detect and not iv.detections and not iv.fully_reviewed:
+        _ran_autodetect = True
         detections = _auto_detect_image(img_path, args)
         if detections:
             iv.detections = detections
             store.set(iv)
             store.save()
             _invalidate_thumbnail(img_path.name)
+
+    if _ran_autodetect and not iv.detections:
+        st.info(
+            "No objects detected automatically. This could mean the image is empty "
+            "or the model doesn't recognize objects in this scene. "
+            "Draw boxes manually to mark what you want the model to learn."
+        )
 
     image_name = img_path.name
     canvas_counter = st.session_state.get(f"_canvas_counter_{image_name}", 0)
@@ -898,13 +907,11 @@ def _review_expanded(
                 st.session_state[f"_canvas_counter_{image_name}"] = canvas_counter + 1
                 st.rerun()
 
+        st.info("Click and drag on the image to draw a box around objects the model missed.")
+
         auto_label = st.session_state.get("_auto_label")
         if auto_label:
-            st.info(f"Draw a rectangle to add **{auto_label}**.")
-        elif not iv.detections:
-            st.info("Draw boxes on the image to mark objects.")
-        else:
-            st.caption("Draw a rectangle to add another detection.")
+            st.caption(f"Drawing as: **{auto_label}**")
 
         bg_img = pil_img.resize((canvas_w, canvas_h))
         bg_img = _draw_verified_image(bg_img, iv.detections)
@@ -1340,18 +1347,30 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
 
     images = ds.staged_images()
     if len(images) < 2:
-        st.info("Need at least 2 images for training.")
+        st.info(
+            f"You have {len(images)} image(s). We recommend at least "
+            f"10\u201320 images per object type for effective training."
+        )
         return
 
     hw = YOLOTrainer.detect_hardware()
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        epochs = st.number_input("Epochs", min_value=1, max_value=300, value=50, step=10)
+        epochs = st.number_input(
+            "Epochs", min_value=1, max_value=300, value=50, step=10,
+            help="How many times to review all images during training. 50 is usually good for fine-tuning.",
+        )
     with col2:
-        batch = st.number_input("Batch", min_value=1, max_value=128, value=hw.suggested_batch)
+        batch = st.number_input(
+            "Batch", min_value=1, max_value=128, value=hw.suggested_batch,
+            help="Images processed at once. Auto-detected for your hardware.",
+        )
     with col3:
-        imgsz = st.selectbox("Image size", [416, 640], index=1)
+        imgsz = st.selectbox(
+            "Image size", [416, 640], index=1,
+            help="Resolution for training. 640 is standard.",
+        )
     with col4:
         st.caption(hw.display)
 
@@ -1367,6 +1386,16 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
             f"It will not retain the base model's original classes. "
             f"To detect other objects, run the base model alongside this one."
         )
+        if hw.device == "cpu":
+            st.warning(
+                "Training on CPU will be significantly slower than GPU. "
+                "Consider using a machine with a CUDA-capable GPU for faster training."
+            )
+        # Training duration estimate
+        hw_factor = 1 if hw.device != "cpu" else 8
+        est_minutes = int((len(images) * epochs) / (batch * 60) * hw_factor)
+        if est_minutes > 0:
+            st.caption(f":material/timer: Estimated training time: ~{est_minutes} minutes (rough estimate)")
         if st.button(":material/rocket_launch: Start Training", type="primary", disabled=not all_ready):
             class_name_to_id = {c: i for i, c in enumerate(classes)}
             ds.set_classes(classes)
@@ -1481,6 +1510,7 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
             threading.Thread(target=_run, daemon=True).start()
             st.rerun()
     else:
+        st.warning("Do not close this browser tab while training is in progress. Training will be lost.")
         p: TrainProgress = shared.get("progress") or TrainProgress()
         if p.total_epochs > 0:
             pct = max(0.0, min(1.0, p.epoch / p.total_epochs))
@@ -1501,11 +1531,47 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
         t1.markdown(f":material/timer: **Elapsed Time:** {elapsed_str}")
         t2.markdown(f":material/image: **Training Images:** {img_count}")
 
-        m1, m2, m3, m4 = st.columns(4)
+        # User-friendly metrics
+        m1, m2, m3 = st.columns(3)
         m1.metric("Epoch", f"{p.epoch}/{p.total_epochs}")
-        m2.metric("Box Loss", f"{p.box_loss:.4f}")
-        m3.metric("Cls Loss", f"{p.cls_loss:.4f}")
-        m4.metric("mAP50", f"{p.mAP50:.3f}")
+
+        # Box accuracy trend
+        prev_box = st.session_state.get("_prev_box_loss")
+        if prev_box is not None and p.box_loss > 0:
+            if p.box_loss < prev_box - 0.001:
+                box_label = "Box accuracy: Improving"
+                box_color = "green"
+            elif p.box_loss > prev_box + 0.001:
+                box_label = "Box accuracy: Declining"
+                box_color = "red"
+            else:
+                box_label = "Box accuracy: Stable"
+                box_color = "orange"
+        else:
+            box_label = "Box accuracy: Starting"
+            box_color = "gray"
+        if p.epoch > 0:
+            st.session_state["_prev_box_loss"] = p.box_loss
+        m2.markdown(f":{box_color}[{box_label}]")
+
+        # Detection quality from mAP50
+        mAP_pct = p.mAP50 * 100
+        if mAP_pct >= 80:
+            quality = "Excellent"
+        elif mAP_pct >= 60:
+            quality = "Good"
+        elif mAP_pct >= 30:
+            quality = "Fair"
+        else:
+            quality = "Poor"
+        m3.metric("Detection quality", f"{mAP_pct:.0f}% ({quality})")
+
+        with st.expander("Technical Details"):
+            td1, td2, td3, td4 = st.columns(4)
+            td1.metric("Epoch", f"{p.epoch}/{p.total_epochs}")
+            td2.metric("Box Loss", f"{p.box_loss:.4f}")
+            td3.metric("Cls Loss", f"{p.cls_loss:.4f}")
+            td4.metric("mAP50", f"{p.mAP50:.3f}")
 
         if st.button(":material/stop_circle: Stop Training"):
             trainer = st.session_state.get("trainer")
@@ -1630,7 +1696,7 @@ def _training_analysis(result: TrainResult, train_dir: Path) -> None:
     cm_plain = train_dir / "confusion_matrix.png"
     cm_path = cm_norm if cm_norm.exists() else cm_plain if cm_plain.exists() else None
     if cm_path:
-        st.markdown("##### Confusion Matrix")
+        st.markdown("##### Which Objects Get Mixed Up")
         with st.expander("How to read the confusion matrix"):
             st.markdown(
                 "Each row is a **true** class, each column is a **predicted** class. "
@@ -1646,7 +1712,7 @@ def _training_analysis(result: TrainResult, train_dir: Path) -> None:
     f1_path = train_dir / "F1_curve.png"
     pr_path = train_dir / "PR_curve.png"
     if f1_path.exists() or pr_path.exists():
-        with st.expander("Evaluation Curves"):
+        with st.expander("Detection Balance"):
             st.markdown(
                 "**F1 Curve**: shows the balance between precision and recall at "
                 "each confidence threshold. The peak is the optimal threshold — "
@@ -1725,6 +1791,10 @@ def _phase_export(args: argparse.Namespace) -> None:
                         f"    min_confidence: 0.3\n"
                         f"    pattern: \"({'|'.join(classes)})\"\n",
                         language="yaml",
+                    )
+                    st.caption(
+                        "Add this to your `objectconfig.yml` (usually at `/etc/zm/`) "
+                        "under the `models:` section."
                     )
                 except Exception as exc:
                     st.error(str(exc))
@@ -1859,6 +1929,11 @@ def _project_selector() -> Path | None:
             'Fine-tune YOLO models on your own data</p></div>',
             unsafe_allow_html=True,
         )
+    st.caption(
+        "If your ZoneMinder detections are wrong \u2014 missing objects, false alarms, "
+        "or misidentified objects \u2014 this tool lets you teach the model using your "
+        "own camera footage. No ML expertise needed."
+    )
     st.divider()
 
     projects = _list_projects()
@@ -1990,8 +2065,8 @@ def _ensure_project(project_name: str) -> Path:
 
 def _model_picker(args: argparse.Namespace, pdir: Path) -> None:
     """Show model selection UI. Saves choice and moves to browse phase."""
-    _section_header("&#x1F916;", "Select Base Model")
-    st.caption("Choose the YOLO model to fine-tune. Larger models are more accurate but slower to train.")
+    _section_header("&#x1F916;", "Starting Model")
+    st.caption("Pick the model you currently use for detection. We'll improve it using your corrections.")
 
     available = _scan_models(args.base_path)
     model_names = [m["name"] for m in available]
