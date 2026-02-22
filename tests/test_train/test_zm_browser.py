@@ -109,12 +109,11 @@ class TestZmDisconnect:
 class TestZmCreds:
     def test_save_and_load_roundtrip(self, project):
         ds, _store = project
-        _save_zm_creds(ds.project_dir, "https://zm.local/zm", "admin", "secret", False)
+        _save_zm_creds(ds.project_dir, "https://zm.local/zm", "admin", False)
 
         loaded = _load_zm_creds(ds.project_dir)
         assert loaded["url"] == "https://zm.local/zm"
         assert loaded["user"] == "admin"
-        assert loaded["password"] == "secret"
         assert loaded["verify_ssl"] is False
 
     def test_save_preserves_existing_project_json(self, project):
@@ -124,11 +123,24 @@ class TestZmCreds:
         meta = json.loads(meta_path.read_text())
         assert "classes" in meta
 
-        _save_zm_creds(ds.project_dir, "http://x", "u", "p", True)
+        _save_zm_creds(ds.project_dir, "http://x", "u", True)
 
         meta = json.loads(meta_path.read_text())
         assert "classes" in meta
         assert meta["zm_connection"]["url"] == "http://x"
+
+    def test_password_not_saved(self, project):
+        """Password must never be persisted in project.json."""
+        import json
+        ds, _store = project
+        _save_zm_creds(ds.project_dir, "https://zm.local/zm", "admin", True)
+
+        raw = json.loads((ds.project_dir / "project.json").read_text())
+        zm_conn = raw["zm_connection"]
+        assert "password" not in zm_conn
+        assert "url" in zm_conn
+        assert "user" in zm_conn
+        assert "verify_ssl" in zm_conn
 
     def test_load_returns_empty_when_no_creds(self, project):
         ds, _store = project

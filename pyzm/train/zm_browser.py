@@ -163,8 +163,8 @@ def _load_zm_creds(project_dir: Path) -> dict:
         return {}
 
 
-def _save_zm_creds(project_dir: Path, url: str, user: str, password: str, verify_ssl: bool) -> None:
-    """Save ZM credentials into project.json."""
+def _save_zm_creds(project_dir: Path, url: str, user: str, verify_ssl: bool) -> None:
+    """Save ZM credentials into project.json (password deliberately excluded)."""
     import json
     meta_path = project_dir / "project.json"
     meta = {}
@@ -176,7 +176,6 @@ def _save_zm_creds(project_dir: Path, url: str, user: str, password: str, verify
     meta["zm_connection"] = {
         "url": url,
         "user": user,
-        "password": password,
         "verify_ssl": verify_ssl,
     }
     meta_path.write_text(json.dumps(meta, indent=2))
@@ -212,11 +211,11 @@ def _zm_connection_form(project_dir: Path) -> None:
             try:
                 _zm_connect(
                     saved["url"], saved.get("user", ""),
-                    saved.get("password", ""), saved.get("verify_ssl", True),
+                    "", saved.get("verify_ssl", True),
                 )
                 st.rerun()
-            except Exception as exc:
-                logger.debug("Auto-connect with saved creds failed: %s", exc)
+            except Exception:
+                pass  # password not saved; show the form instead
         connected = st.session_state.get("zm_connected", False)
 
     with st.expander(
@@ -244,7 +243,10 @@ def _zm_connection_form(project_dir: Path) -> None:
             with col_user:
                 user = st.text_input("Username", value=saved.get("user", "admin"), placeholder="admin")
             with col_pass:
-                password = st.text_input("Password", value=saved.get("password", "admin"), type="password")
+                password = st.text_input(
+                    "Password", value="", type="password",
+                    help="Password is not saved to disk for security.",
+                )
             verify_ssl = st.checkbox("Verify SSL", value=saved.get("verify_ssl", True))
             submitted = st.form_submit_button("Connect", type="primary")
 
@@ -254,7 +256,7 @@ def _zm_connection_form(project_dir: Path) -> None:
                 return
             try:
                 _zm_connect(url.strip(), user.strip(), password, verify_ssl)
-                _save_zm_creds(project_dir, url.strip(), user.strip(), password, verify_ssl)
+                _save_zm_creds(project_dir, url.strip(), user.strip(), verify_ssl)
                 st.rerun()
             except Exception as exc:
                 st.error(f"Connection failed: {exc}")
