@@ -3,7 +3,7 @@
 v2: Typed configuration, clean APIs, proper result objects.
 """
 
-__version__ = "2.1.3"
+__version__ = "2.1.4"
 VERSION = __version__
 
 from pyzm.client import ZMClient
