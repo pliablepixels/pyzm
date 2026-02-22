@@ -458,6 +458,7 @@ def _auto_detect_image(
                 original=ann,
                 status=DetectionStatus.PENDING,
                 original_label=d.label,
+                confidence=getattr(d, "confidence", None),
             ))
     except Exception as exc:
         logger.warning("Auto-detect failed for %s: %s", image_path.name, exc)
@@ -554,6 +555,37 @@ def _sidebar(ds: YOLODataset | None, store: VerificationStore | None) -> str:
             st.divider()
             st.markdown(":material/checklist: **Review Progress**")
             _sidebar_review_summary(store, len(images))
+
+            # Bulk approve by confidence
+            st.divider()
+            st.markdown(":material/done_all: **Bulk Approve**")
+            bulk_thresh = st.slider(
+                "Min confidence", 0.5, 1.0, 0.7, 0.05,
+                key="_bulk_approve_thresh",
+                help="Approve all detections above this confidence.",
+            )
+            if st.button("Apply", key="bulk_approve_apply"):
+                count = 0
+                for img_name in store.all_images():
+                    iv = store.get(img_name)
+                    if iv is None:
+                        continue
+                    for det in iv.detections:
+                        if det.status == DetectionStatus.PENDING:
+                            conf = det.confidence
+                            if conf is not None and conf >= bulk_thresh:
+                                det.status = DetectionStatus.APPROVED
+                                count += 1
+                    if iv.pending_count == 0 and iv.detections:
+                        iv.fully_reviewed = True
+                    store.set(iv)
+                store.save()
+                st.session_state["_review_grid_counter"] = (
+                    st.session_state.get("_review_grid_counter", 0) + 1
+                )
+                st.session_state["_thumb_cache"] = {}
+                st.toast(f"Approved {count} detection(s)")
+                st.rerun()
 
         # --- Class coverage ---
         if store:
@@ -675,6 +707,24 @@ def _phase_review(ds: YOLODataset, store: VerificationStore, args: argparse.Name
         return
 
     _section_header("&#x1F50D;", "Review Detections")
+
+    with st.expander("Detection status colors"):
+        legend_cols = st.columns(6)
+        for col, (status, color) in zip(legend_cols, _STATUS_COLORS.items()):
+            label_map = {
+                DetectionStatus.PENDING: "Pending review",
+                DetectionStatus.APPROVED: "Approved",
+                DetectionStatus.DELETED: "Deleted",
+                DetectionStatus.RENAMED: "Renamed",
+                DetectionStatus.RESHAPED: "Reshaped",
+                DetectionStatus.ADDED: "Added manually",
+            }
+            col.markdown(
+                f"<span style='display:inline-block;width:12px;height:12px;"
+                f"background:{color};border-radius:2px;vertical-align:middle;'></span> "
+                f"<span style='font-size:0.85em;'>{label_map.get(status, status.value)}</span>",
+                unsafe_allow_html=True,
+            )
 
     # Persistent auto-detect toggle (saved in project.json)
     auto_detect_default = bool(ds.get_setting("auto_detect", True))
@@ -984,6 +1034,49 @@ def _review_expanded(
             else:
                 st.session_state["_review_expanded_idx"] = expanded_idx + 1
             st.rerun()
+
+    # --- Re-review & Remove image ---
+    if not reshape_det_id and not pending_rects:
+        re_col, rm_col = st.columns(2)
+        with re_col:
+            if iv.fully_reviewed:
+                if st.button(":material/undo: Re-review", key=f"rereview_{image_name}"):
+                    for d in iv.detections:
+                        if d.status != DetectionStatus.DELETED:
+                            d.status = DetectionStatus.PENDING
+                    iv.fully_reviewed = False
+                    changed = True
+        with rm_col:
+            if st.button(":material/delete: Remove Image", key=f"rmimg_{image_name}"):
+                st.session_state[f"_confirm_rmimg_{image_name}"] = True
+                st.rerun()
+        if st.session_state.get(f"_confirm_rmimg_{image_name}"):
+            st.warning(f"Remove **{image_name}** and its annotations?")
+            yes_col, no_col = st.columns(2)
+            with yes_col:
+                if st.button("Yes, remove", type="primary", key=f"rmimg_yes_{image_name}"):
+                    # Remove image and label files
+                    img_file = ds._images_dir / image_name
+                    label_file = ds._labels_dir / (img_path.stem + ".txt")
+                    if img_file.exists():
+                        img_file.unlink()
+                    if label_file.exists():
+                        label_file.unlink()
+                    store.remove(image_name)
+                    store.save()
+                    _invalidate_thumbnail(image_name)
+                    st.session_state.pop(f"_confirm_rmimg_{image_name}", None)
+                    st.session_state.pop("_review_expanded_idx", None)
+                    st.session_state["_review_grid_counter"] = (
+                        st.session_state.get("_review_grid_counter", 0) + 1
+                    )
+                    st.session_state["_thumb_cache"] = {}
+                    st.toast(f"Removed {image_name}")
+                    st.rerun()
+            with no_col:
+                if st.button("Cancel", key=f"rmimg_no_{image_name}"):
+                    st.session_state.pop(f"_confirm_rmimg_{image_name}", None)
+                    st.rerun()
 
     if changed:
         store.set(iv)

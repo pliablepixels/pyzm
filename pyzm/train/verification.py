@@ -58,6 +58,7 @@ class VerifiedDetection:
     new_label: str | None = None
     adjusted: Annotation | None = None
     original_label: str = ""
+    confidence: float | None = None
 
     @property
     def effective_label(self) -> str:
@@ -91,6 +92,8 @@ class VerifiedDetection:
             "status": self.status.value,
             "original_label": self.original_label,
         }
+        if self.confidence is not None:
+            d["confidence"] = self.confidence
         if self.new_label is not None:
             d["new_label"] = self.new_label
         if self.adjusted is not None:
@@ -126,6 +129,7 @@ class VerifiedDetection:
             new_label=d.get("new_label"),
             adjusted=adjusted,
             original_label=d.get("original_label", ""),
+            confidence=d.get("confidence"),
         )
 
 
@@ -196,6 +200,10 @@ class VerificationStore:
 
     def set(self, iv: ImageVerification) -> None:
         self._data[iv.image_name] = iv
+
+    def remove(self, image_name: str) -> None:
+        """Remove an image from the store."""
+        self._data.pop(image_name, None)
 
     def all_images(self) -> list[str]:
         return list(self._data.keys())
