@@ -237,6 +237,42 @@ When you launch the UI, you can create a new project or resume an existing
 one. The **Switch Project** and **Reset Project** buttons in the sidebar let
 you manage projects.
 
+Testing the fine-tuned model
+----------------------------
+
+Before deploying, you can quickly verify the exported model on a test image
+using the included ``test_finetuned_model.py`` example script. It runs
+detection and saves an annotated image with bounding boxes drawn on it.
+
+.. code-block:: bash
+
+   /opt/zoneminder/venv/bin/python examples/test_finetuned_model.py \
+       /path/to/test_image.jpg \
+       ~/.pyzm/training/my_project/best.onnx
+
+Class labels are automatically extracted from the ONNX metadata — no separate
+labels file is needed. Optional flags:
+
+``--labels <path>``
+   Override labels with a text file (one class per line). Only needed if the
+   ONNX model lacks embedded metadata.
+
+``--confidence <float>``
+   Minimum confidence threshold. Default: ``0.3``
+
+``--out <path>``
+   Output image path. Default: ``<image>_detections.<ext>``
+
+The script prints each detection and saves the annotated image:
+
+.. code-block:: text
+
+   Detections: dog:94% cat:87%
+     dog: 94%  [120,45 -> 380,410]
+     cat: 87%  [450,200 -> 620,390]
+
+   Saved annotated image to: test_image_detections.jpg
+
 Using the fine-tuned model
 --------------------------
 

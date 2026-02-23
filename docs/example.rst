@@ -20,3 +20,7 @@ Audio detection (BirdNET)
 Remote detection via pyzm.serve
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .. literalinclude:: ../examples/remote.py
+
+Testing a fine-tuned model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. literalinclude:: ../examples/test_finetuned_model.py
