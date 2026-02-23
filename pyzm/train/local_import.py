@@ -274,6 +274,10 @@ def import_local_dataset(
         import random
         all_files = random.sample(all_files, max_images)
 
+    # Remap class IDs to contiguous 0-based indices (needed when classes
+    # are ignored/filtered, leaving gaps like {1: "gun"} → {0: "gun"}).
+    id_remap = {old_id: new_id for new_id, old_id in enumerate(sorted(names_map))}
+
     img_count = 0
     det_count = 0
     split_map: dict[str, str] = {}
@@ -295,7 +299,13 @@ def import_local_dataset(
                 except (ValueError, IndexError):
                     logger.warning("Skipping malformed line in %s: %s", label_path, line)
                     continue
-                class_name = names_map.get(ann.class_id, f"class_{ann.class_id}")
+                class_name = names_map.get(ann.class_id)
+                if class_name is None:
+                    continue  # Skip annotations for ignored/unknown classes
+                ann = Annotation(
+                    class_id=id_remap[ann.class_id],
+                    cx=ann.cx, cy=ann.cy, w=ann.w, h=ann.h,
+                )
                 annotations.append(ann)
                 detections.append(VerifiedDetection(
                     detection_id=f"det_{j}",
@@ -361,6 +371,12 @@ def local_dataset_panel(
     """Streamlit panel for importing a local YOLO dataset."""
     import streamlit as st
 
+    # Restore saved path when reopening an existing project
+    if "_yolo_folder_path" not in st.session_state:
+        saved = ds.get_setting("import_source_path", "")
+        if saved:
+            st.session_state["_yolo_folder_path"] = saved
+
     folder_path = st.text_input(
         "Path to YOLO dataset folder",
         placeholder="/path/to/my_dataset",
@@ -413,6 +429,18 @@ def local_dataset_panel(
     )
     st.caption(f"Classes: {', '.join(class_names)}")
 
+    ignore_classes = st.multiselect(
+        "Classes to ignore",
+        options=class_names,
+        default=[],
+        help="Select classes to exclude from import. Their annotations will be skipped.",
+        key="_ignore_classes",
+    )
+    if ignore_classes:
+        names_map = {k: v for k, v in names_map.items() if v not in ignore_classes}
+        kept = [names_map[k] for k in sorted(names_map)]
+        st.info(f"Importing **{len(kept)}** classes: {', '.join(kept)}")
+
     limit_all = st.checkbox("Import all images", value=True, key="_local_import_all")
     max_images = 0
     if not limit_all:
@@ -426,6 +454,7 @@ def local_dataset_panel(
         img_count, det_count = _import_local_dataset(
             ds, store, splits, names_map, max_images=max_images,
         )
+        ds.set_setting("import_source_path", folder_path)
         st.toast(f"Imported {img_count} images with {det_count} annotations")
         st.rerun()
 
@@ -522,6 +551,12 @@ def raw_images_panel(
             label="Upload images that we will use to train",
         )
     else:
+        # Restore saved path when reopening an existing project
+        if "_raw_folder_path" not in st.session_state:
+            saved = ds.get_setting("import_source_path", "")
+            if saved:
+                st.session_state["_raw_folder_path"] = saved
+
         folder_path = st.text_input(
             "Path to image folder",
             placeholder="/path/to/my_images",
@@ -575,6 +610,7 @@ def raw_images_panel(
                                 ds, store, Path(scan["folder"]),
                                 max_images=raw_max,
                             )
+                            ds.set_setting("import_source_path", scan["folder"])
                             st.session_state.pop(scan_key, None)
                             st.toast(f"Imported {img_count} images")
                             st.rerun()
