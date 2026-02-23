@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from unittest.mock import MagicMock, patch
+
 from pyzm.train.dataset import Annotation, YOLODataset
 from pyzm.train.local_import import (
     _find_images,
@@ -13,6 +15,8 @@ from pyzm.train.local_import import (
     _import_local_dataset,
     _import_raw_images,
     _infer_split,
+    auto_detect_image,
+    import_correct_model,
     import_local_dataset,
     import_raw_images,
     validate_yolo_folder,
@@ -898,3 +902,205 @@ class TestMaxPerClass:
 
         # per-class selects 6 images, then max_images caps to 2
         assert img_count == 2
+
+
+# ---------------------------------------------------------------------------
+# auto_detect_image (pure-Python function)
+# ---------------------------------------------------------------------------
+
+class TestAutoDetectImage:
+    def test_returns_empty_when_no_model_classes_and_no_trained(self, tmp_path):
+        """Returns empty list when model_classes is empty and no best.pt."""
+        img = tmp_path / "test.jpg"
+        from PIL import Image
+        Image.new("RGB", (100, 100), "red").save(str(img))
+
+        result = auto_detect_image(
+            img,
+            base_model="yolo11s",
+            workspace_dir=str(tmp_path),
+            model_classes=[],
+        )
+        assert result == []
+
+    def test_returns_detections_on_success(self, tmp_path):
+        """Mocks Detector and verifies PENDING detections are returned."""
+        img_path = tmp_path / "test.jpg"
+        from PIL import Image
+        Image.new("RGB", (200, 100), "blue").save(str(img_path))
+
+        # Mock Detector
+        mock_bbox = MagicMock()
+        mock_bbox.x1, mock_bbox.y1, mock_bbox.x2, mock_bbox.y2 = 10, 20, 50, 80
+
+        mock_det = MagicMock()
+        mock_det.bbox = mock_bbox
+        mock_det.label = "car"
+        mock_det.confidence = 0.85
+
+        mock_result = MagicMock()
+        mock_result.detections = [mock_det]
+
+        mock_detector = MagicMock()
+        mock_detector.detect.return_value = mock_result
+
+        with patch("pyzm.ml.detector.Detector", return_value=mock_detector):
+            result = auto_detect_image(
+                img_path,
+                base_model="yolo11s",
+                model_classes=["car", "person"],
+            )
+
+        assert len(result) == 1
+        assert result[0].status == DetectionStatus.PENDING
+        assert result[0].original_label == "car"
+        assert result[0].confidence == 0.85
+
+    def test_uses_best_onnx_when_available(self, tmp_path):
+        """When best.onnx exists, it is used instead of base_model."""
+        img_path = tmp_path / "test.jpg"
+        from PIL import Image
+        Image.new("RGB", (100, 100), "red").save(str(img_path))
+
+        # Create fake best.onnx
+        weights_dir = tmp_path / "runs" / "train" / "weights"
+        weights_dir.mkdir(parents=True)
+        (weights_dir / "best.onnx").write_bytes(b"fake")
+
+        mock_detector = MagicMock()
+        mock_detector.detect.return_value = MagicMock(detections=[])
+
+        with patch("pyzm.ml.detector.Detector", return_value=mock_detector) as MockDet:
+            auto_detect_image(
+                img_path,
+                base_model="yolo11s",
+                workspace_dir=str(tmp_path),
+                model_classes=[],  # Empty, but has_trained=True
+            )
+
+        # Should be called with best.onnx path
+        call_kwargs = MockDet.call_args
+        assert "best.onnx" in call_kwargs[1]["models"][0]
+
+    def test_handles_detection_failure_gracefully(self, tmp_path):
+        """Returns empty list on detection failure."""
+        img_path = tmp_path / "test.jpg"
+        from PIL import Image
+        Image.new("RGB", (100, 100), "red").save(str(img_path))
+
+        with patch("pyzm.ml.detector.Detector", side_effect=RuntimeError("fail")):
+            result = auto_detect_image(
+                img_path,
+                base_model="yolo11s",
+                model_classes=["car"],
+            )
+
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
+# import_correct_model
+# ---------------------------------------------------------------------------
+
+class TestImportCorrectModel:
+    @pytest.fixture
+    def workspace(self, tmp_path):
+        pdir = tmp_path / "workspace"
+        ds = YOLODataset(project_dir=pdir, classes=[])
+        ds.init_project()
+        store = VerificationStore(pdir)
+        return ds, store
+
+    def test_imports_and_detects(self, tmp_path, workspace):
+        """Images are imported with detections stored as PENDING."""
+        ds, store = workspace
+        folder = _make_raw_images_folder(tmp_path, count=3)
+
+        # Mock auto_detect_image to return 2 detections per image
+        def _fake_detect(*args, **kwargs):
+            ann = Annotation(class_id=0, cx=0.5, cy=0.5, w=0.2, h=0.3)
+            from pyzm.train.verification import VerifiedDetection
+            return [
+                VerifiedDetection(
+                    detection_id="det_0", original=ann,
+                    status=DetectionStatus.PENDING, original_label="car",
+                ),
+                VerifiedDetection(
+                    detection_id="det_1", original=ann,
+                    status=DetectionStatus.PENDING, original_label="person",
+                ),
+            ]
+
+        with patch(
+            "pyzm.train.local_import.auto_detect_image",
+            side_effect=_fake_detect,
+        ):
+            img_count, det_count = import_correct_model(
+                ds, store, folder,
+                base_model="yolo11s",
+                model_classes=["car"],
+            )
+
+        assert img_count == 3
+        assert det_count == 6  # 2 per image * 3
+
+        staged = ds.staged_images()
+        assert len(staged) == 3
+
+        for img in staged:
+            iv = store.get(img.name)
+            assert iv is not None
+            assert iv.fully_reviewed is False
+            assert len(iv.detections) == 2
+
+    def test_empty_folder(self, tmp_path, workspace):
+        """Empty folder returns (0, 0)."""
+        ds, store = workspace
+        folder = tmp_path / "empty"
+        folder.mkdir()
+
+        img_count, det_count = import_correct_model(
+            ds, store, folder, base_model="yolo11s",
+        )
+
+        assert img_count == 0
+        assert det_count == 0
+
+    def test_sets_data_source(self, tmp_path, workspace):
+        """data_source setting is set to 'correct_model'."""
+        ds, store = workspace
+        folder = _make_raw_images_folder(tmp_path, count=1)
+
+        with patch(
+            "pyzm.train.local_import.auto_detect_image",
+            return_value=[],
+        ):
+            import_correct_model(ds, store, folder, base_model="yolo11s")
+
+        assert ds.get_setting("data_source") == "correct_model"
+
+    def test_progress_callback(self, tmp_path, workspace):
+        """progress_callback is invoked for each image with 4 args."""
+        ds, store = workspace
+        folder = _make_raw_images_folder(tmp_path, count=3)
+
+        calls = []
+        with patch(
+            "pyzm.train.local_import.auto_detect_image",
+            return_value=[],
+        ):
+            import_correct_model(
+                ds, store, folder,
+                base_model="yolo11s",
+                progress_callback=lambda cur, tot, name="", summary="": calls.append(
+                    (cur, tot, name, summary)
+                ),
+            )
+
+        assert len(calls) == 3
+        assert calls[0][0] == 1
+        assert calls[0][1] == 3
+        assert calls[-1][0] == 3
+        # name and summary are populated
+        assert calls[0][2]  # image name is non-empty
+        assert isinstance(calls[0][3], str)  # summary is a string

@@ -157,6 +157,32 @@ class TestYOLODataset:
         assert len(loaded) == 1
         assert loaded[0].class_id == 2
 
+    def test_remove_image(self, dataset: YOLODataset, sample_images: list[Path]):
+        anns = [Annotation(class_id=0, cx=0.5, cy=0.5, w=0.3, h=0.4)]
+        dest = dataset.add_image(sample_images[0], anns)
+        assert dest.exists()
+        label = dataset._labels_dir / f"{dest.stem}.txt"
+        assert label.exists()
+
+        dataset.remove_image(dest.name)
+        assert not dest.exists()
+        assert not label.exists()
+        # Cache invalidated: staged_images should be empty
+        assert len(dataset.staged_images()) == 0
+
+    def test_remove_image_nonexistent(self, dataset: YOLODataset):
+        # Should not raise for a missing image
+        dataset.remove_image("does_not_exist.jpg")
+
+    def test_remove_image_no_label(self, dataset: YOLODataset, sample_images: list[Path]):
+        dest = dataset.add_image(sample_images[0], [])
+        # Delete the (empty) label file first
+        label = dataset._labels_dir / f"{dest.stem}.txt"
+        label.unlink()
+        # remove_image should still work without error
+        dataset.remove_image(dest.name)
+        assert not dest.exists()
+
     def test_split_basic(self, dataset: YOLODataset, sample_images: list[Path]):
         for img in sample_images:
             dataset.add_image(img, [Annotation(0, 0.5, 0.5, 0.3, 0.3)])

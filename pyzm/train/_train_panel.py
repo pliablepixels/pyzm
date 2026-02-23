@@ -39,7 +39,24 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
 
     classes = store.build_class_list()
     if not classes:
-        st.info("No verified detections yet. Go to **Review Detections** first.")
+        # Fall back to classes already saved in the dataset (e.g. from a
+        # previous training run or from the YOLO dataset import).
+        classes = list(ds.classes) if ds.classes else []
+    if not classes:
+        reviewed = store.reviewed_images_count()
+        if reviewed > 0:
+            st.warning(
+                "All detections were deleted — no object classes to train on. "
+                "Background-only images need at least **some** images with "
+                "approved detections to be useful.\n\n"
+                "Go back to **Review Detections** and either approve correct "
+                "detections or draw boxes on objects the model should learn."
+            )
+        else:
+            st.info("No verified detections yet. Go to **Review Detections** first.")
+        if st.button("Go to Review Detections", key="train_go_review"):
+            st.session_state["active_phase"] = "review"
+            st.rerun()
         return
 
     # Readiness check — only corrected classes need the image threshold
@@ -106,19 +123,53 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
         with col4:
             st.caption(hw.display)
 
+        # Determine new vs known classes for smart defaults
+        model_class_names: list[str] = (
+            st.session_state.get("model_class_names")
+            or ds.get_setting("model_class_names")
+            or []
+        )
+        new_classes = [c for c in classes if c not in model_class_names]
+        known_classes = [c for c in classes if c in model_class_names]
+        has_new = bool(new_classes)
+
+        # Restore previous selection; fall back to heuristic
+        _saved_ft = ds.get_setting("ft_mode", "")
+        if _saved_ft in ("new_class", "refine"):
+            _ft_default_idx = 0 if _saved_ft == "new_class" else 1
+        else:
+            _ft_default_idx = 0 if has_new else 1
+
+        # Contextual recommendation
+        n_images = len(images)
+        if has_new:
+            new_list = ", ".join(f"**{c}**" for c in new_classes)
+            st.info(
+                f":material/lightbulb: **Recommended: New class** — your dataset "
+                f"includes classes the base model doesn't know ({new_list}). "
+                f"New class mode uses minimal augmentation so the model learns "
+                f"clean representations first."
+            )
+        elif n_images < 50:
+            st.info(
+                f":material/lightbulb: **Recommended: Refine existing** — all "
+                f"your classes are already known to the base model. With only "
+                f"**{n_images}** images, improvements may be modest — consider "
+                f"adding more images for better results."
+            )
+        else:
+            st.info(
+                f":material/lightbulb: **Recommended: Refine existing** — all "
+                f"your classes are already known to the base model. You're "
+                f"teaching it to detect them better in your specific environment."
+            )
+
         ft_mode = st.radio(
             "Fine-tuning mode",
             options=["new_class", "refine"],
+            index=_ft_default_idx,
             format_func=lambda x: "New class" if x == "new_class" else "Refine existing",
             horizontal=True,
-            help=(
-                "**New class**: teaching the model an object it has never seen "
-                "(e.g. gun, knife). Uses minimal augmentation so the model "
-                "learns clean representations first.\n\n"
-                "**Refine existing**: improving detection of a class the model "
-                "already knows (e.g. adding your camera's person images). "
-                "Uses moderate augmentation to help generalise."
-            ),
         )
 
         adaptive = adaptive_finetune_params(len(images), mode=ft_mode)
@@ -132,11 +183,19 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
 
         if not training_active:
             all_ready = not needs
+            deploy_tip = ""
+            if ft_mode == "new_class":
+                deploy_tip = (
+                    " **Deployment**: add this model alongside your base model "
+                    "in `objectconfig.yml` and use "
+                    "`same_model_sequence_strategy: union` to combine detections."
+                )
             st.info(
                 f"This fine-tuned model will **only** detect the following "
                 f"{len(classes)} object(s): **{', '.join(classes)}**. "
                 f"It will not retain the base model's original classes. "
                 f"To detect other objects, run the base model alongside this one."
+                + deploy_tip
             )
             if hw.device == "cpu":
                 st.warning(
@@ -150,6 +209,7 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
             if st.button(":material/rocket_launch: Start Training", type="primary", disabled=not all_ready):
                 class_name_to_id = {c: i for i, c in enumerate(classes)}
                 ds.set_classes(classes)
+                ds.set_setting("ft_mode", ft_mode)
                 yaml_path = ds.generate_yaml()
 
                 trainer = YOLOTrainer(
@@ -343,13 +403,43 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
 
         if p.error:
             st.error(p.error)
-        elif not p.finished:
+        # Keep polling while the training thread is alive — p.finished may
+        # be True (trainer returned) while the thread is still exporting
+        # ONNX and writing results.  Stop only once active becomes False.
+        if shared.get("active"):
+            if p.finished:
+                st.info("Training complete — exporting model...")
             import time
             time.sleep(2)
             st.rerun()
 
     # === Step 2: Training results ===
     if train_done:
+        # Prominent completion banner (always visible)
+        onnx_path = shared.get("onnx_path")
+        onnx_error = shared.get("onnx_error")
+        mAP_pct = result.final_mAP50 * 100
+        early_stop = (
+            result.best_epoch > 0
+            and result.best_epoch < result.total_epochs
+        )
+        early_note = (
+            f" Training stopped early at epoch {result.best_epoch}/{result.total_epochs} "
+            f"(no further improvement detected)."
+            if early_stop else ""
+        )
+        st.success(
+            f":material/check_circle: **Training complete!** "
+            f"mAP50: **{mAP_pct:.0f}%** — "
+            f"Model size: **{result.model_size_mb:.1f} MB** — "
+            f"Time: **{result.elapsed_seconds / 60:.1f} min**"
+            + early_note
+        )
+        if onnx_path:
+            st.info(f":material/download_done: ONNX model ready: `{onnx_path}`")
+        elif onnx_error:
+            st.warning(f"ONNX export failed: {onnx_error}")
+
         with _step_expander(
             "Training results",
             done=True,
@@ -382,20 +472,12 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
                     })
                 st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
-            # ONNX export result
-            onnx_path = shared.get("onnx_path")
-            onnx_error = shared.get("onnx_error")
-            if onnx_path:
-                st.success(f":material/download_done: ONNX exported: `{onnx_path}`")
-            elif onnx_error:
-                st.warning(f"ONNX export failed: {onnx_error}")
-
             pdir = st.session_state.get("workspace_dir")
             if pdir:
                 st.caption(f"Dataset: `{pdir}`")
                 _training_analysis(result, Path(pdir) / "runs" / "train")
 
-            _test_image_panel()
+            _test_image_panel(args)
 
 
 def _training_analysis(result: TrainResult, train_dir: Path) -> None:
@@ -512,15 +594,15 @@ def _training_analysis(result: TrainResult, train_dir: Path) -> None:
                     _show_full(str(val_preds), "Predictions")
 
 
-def _test_image_panel() -> None:
+def _test_image_panel(args: argparse.Namespace) -> None:
     """Let the user test the trained model on an image."""
     pdir = st.session_state.get("workspace_dir")
     base_model = st.session_state.get("base_model", "yolo11s")
     if not pdir:
         return
 
-    best_pt = Path(pdir) / "runs" / "train" / "weights" / "best.pt"
-    if not best_pt.exists():
+    weights_dir = Path(pdir) / "runs" / "train" / "weights"
+    if not (weights_dir / "best.pt").exists() and not (weights_dir / "best.onnx").exists():
         return
 
     classes = st.session_state.get("classes", [])
@@ -531,20 +613,47 @@ def _test_image_panel() -> None:
         f"to merge results."
     )
 
+    min_conf = st.slider(
+        "Confidence threshold",
+        min_value=0.01, max_value=1.0, value=0.3, step=0.05,
+        help="Detections below this confidence are discarded.",
+        key="test_min_confidence",
+    )
+
     test_file = st.file_uploader("Test image", type=["jpg", "jpeg", "png"], key="test_img")
     if test_file:
         trainer = YOLOTrainer(base_model=base_model, project_dir=Path(pdir))
         pil_img = Image.open(test_file).convert("RGB")
         img_array = np.array(pil_img)
         try:
-            dets = trainer.evaluate(img_array[..., ::-1])
-            from PIL import ImageDraw
+            dets = trainer.evaluate(
+                img_array[..., ::-1],
+                processor=args.processor,
+                min_confidence=min_conf,
+            )
+            from PIL import ImageDraw, ImageFont
+
             draw_img = pil_img.copy()
             draw = ImageDraw.Draw(draw_img)
+
+            # Scale font size to ~2% of image height (min 14, max 40)
+            font_size = max(14, min(40, draw_img.height // 50))
+            try:
+                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+            except (OSError, IOError):
+                font = ImageFont.load_default(size=font_size)
+
+            box_width = max(2, draw_img.height // 300)
             for d in dets:
                 x1, y1, x2, y2 = d["bbox"]
-                draw.rectangle([x1, y1, x2, y2], outline="lime", width=2)
-                draw.text((x1, max(0, y1 - 12)), f"{d['label']} {d['confidence']:.0%}", fill="lime")
+                label = f"{d['label']} {d['confidence']:.0%}"
+                draw.rectangle([x1, y1, x2, y2], outline="lime", width=box_width)
+                # Draw text with dark background for readability
+                bbox = font.getbbox(label)
+                tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+                ty = max(0, y1 - th - 4)
+                draw.rectangle([x1, ty, x1 + tw + 4, ty + th + 4], fill=(0, 0, 0, 180))
+                draw.text((x1 + 2, ty + 2), label, fill="lime", font=font)
             st.image(draw_img, width="stretch")
             if dets:
                 st.caption(", ".join(f"{d['label']} {d['confidence']:.0%}" for d in dets))

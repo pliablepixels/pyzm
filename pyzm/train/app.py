@@ -6,7 +6,7 @@ Launch with::
     streamlit run pyzm/train/app.py -- --base-path /path/to/models
 
 Phases (sidebar-driven):
-    1. Select Images -- import frames from ZM events, YOLO datasets, or raw images
+    1. Select Images -- import from YOLO datasets, raw images, or correct model detections
     2. Review Detections -- approve/edit/delete auto-detected objects
     3. Train & Export -- fine-tune and export ONNX
 """
@@ -516,14 +516,25 @@ def _sidebar(ds: YOLODataset | None, store: VerificationStore | None) -> str:
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
-        if st.button(":material/restart_alt: Reset Project", key="reset_workspace"):
+        st.markdown(
+            "<style>#pyzm-delete-project button { "
+            "background-color: #E74C3C !important; "
+            "border-color: #C0392B !important; color: white !important; }"
+            "</style>"
+            "<div id='pyzm-delete-project'>",
+            unsafe_allow_html=True,
+        )
+        if st.button(":material/delete: Delete Project", key="reset_workspace"):
             st.session_state["_confirm_reset"] = True
             st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
         if st.session_state.get("_confirm_reset"):
-            st.warning("Delete all images, annotations, and settings?")
+            st.warning(
+                f"Permanently delete **{project_name}** and all its data?"
+            )
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("Yes, reset", type="primary", key="reset_confirm"):
+                if st.button("Yes, delete", type="primary", key="reset_confirm"):
                     _reset_project()
             with c2:
                 if st.button("Cancel", key="reset_cancel"):
@@ -829,6 +840,18 @@ def _model_picker(args: argparse.Namespace, pdir: Path) -> None:
 
 
 def main() -> None:
+    # Configure logging so all pyzm messages (pyzm.train, pyzm.ml, etc.)
+    # appear in the console
+    _pyzm_logger = logging.getLogger("pyzm")
+    if not _pyzm_logger.handlers:
+        _handler = logging.StreamHandler()
+        _handler.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)s [%(name)s] %(message)s",
+            datefmt="%H:%M:%S",
+        ))
+        _pyzm_logger.addHandler(_handler)
+        _pyzm_logger.setLevel(logging.DEBUG)
+
     st.set_page_config(
         page_title="pyZM Training Studio",
         page_icon=":material/model_training:",
@@ -856,26 +879,29 @@ def main() -> None:
     ds = YOLODataset.load(pdir)
     store = VerificationStore(pdir)
 
-    # First run: pick a base model before proceeding
+    # Restore base_model from saved project metadata
     if not st.session_state.get("base_model"):
-        # Try to load from saved metadata
         meta_path = pdir / "project.json"
         if meta_path.exists():
             meta = json.loads(meta_path.read_text())
             if meta.get("base_model"):
                 st.session_state["base_model"] = meta["base_model"]
-        if not st.session_state.get("base_model"):
-            _sidebar(None, None)
-            _model_picker(args, pdir)
-            return
 
     # Load model class names into session if not present
     if "model_class_names" not in st.session_state:
-        base_model = st.session_state.get("base_model", "yolo11s")
-        available = _scan_models(args.base_path)
-        model_paths = {m["name"]: m["path"] for m in available}
-        model_path = model_paths.get(base_model, "")
-        st.session_state["model_class_names"] = _read_model_classes(model_path)
+        # Try project settings first (persisted), then read from model file
+        saved_classes = ds.get_setting("model_class_names")
+        if saved_classes:
+            st.session_state["model_class_names"] = saved_classes
+        elif st.session_state.get("base_model"):
+            base_model = st.session_state["base_model"]
+            available = _scan_models(args.base_path)
+            model_paths = {m["name"]: m["path"] for m in available}
+            model_path = model_paths.get(base_model, "")
+            classes_from_model = _read_model_classes(model_path)
+            st.session_state["model_class_names"] = classes_from_model
+            if classes_from_model:
+                ds.set_setting("model_class_names", classes_from_model)
 
     _seed_from_legacy_labels(ds, store)
 

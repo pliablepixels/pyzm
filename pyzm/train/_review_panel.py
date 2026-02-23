@@ -32,6 +32,99 @@ from st_clickable_images import clickable_images
 
 
 # ===================================================================
+# Annotation guidance
+# ===================================================================
+
+def _annotation_guidance(
+    ds: YOLODataset, store: VerificationStore, images: list[Path],
+) -> None:
+    """Show contextual guidance and bulk-delete buttons for known-class detections."""
+    ft_mode = ds.get_setting("ft_mode", "")
+    model_class_names: list[str] = (
+        st.session_state.get("model_class_names")
+        or ds.get_setting("model_class_names")
+        or []
+    )
+    if not model_class_names:
+        return
+
+    class_counts = store.class_detection_counts()
+    if not class_counts:
+        return
+
+    known_classes = {
+        cls: counts for cls, counts in class_counts.items()
+        if cls in model_class_names
+    }
+    new_classes = {
+        cls for cls in class_counts if cls not in model_class_names
+    }
+
+    if not known_classes:
+        return
+
+    new_list = ", ".join(f"**{c}**" for c in sorted(new_classes)) if new_classes else "*(none yet)*"
+    known_list = ", ".join(f"**{c}**" for c in sorted(known_classes))
+
+    if ft_mode == "refine":
+        st.info(
+            "**Refine mode**: Keep all detections — you're improving the model's "
+            "accuracy on classes it already knows. Approve correct detections "
+            "and fix wrong ones."
+        )
+        return
+
+    # new_class mode (or unset) — summarise what was found
+    total_known_dets = sum(c["detections"] for c in known_classes.values())
+    base_model = st.session_state.get("base_model", "base model")
+    n_images = len(images)
+    recommend_delete = n_images < 500
+
+    st.info(
+        f"I found multiple objects in your images that the base model "
+        f"(**{base_model}**) already detects: {known_list}."
+    )
+
+    if recommend_delete:
+        st.warning(
+            f"Since you only have **{n_images}** images, I recommend you "
+            f"delete these objects from the detections so that the fine-tuned "
+            f"model doesn't skew existing detections."
+        )
+    else:
+        st.success(
+            f"Given you have **{n_images}** images, I recommend you keep "
+            f"these objects in the fine-tuned model as you have enough images "
+            f"to generalize well and accentuate the quality of the base model."
+        )
+
+    col_del, col_keep = st.columns(2)
+    with col_del:
+        if st.button(
+            f":material/delete_sweep: Delete all known labels ({total_known_dets})",
+            type="primary" if recommend_delete else "secondary",
+            key="_bulk_del_all_known",
+        ):
+            total_removed = 0
+            for cls in known_classes:
+                total_removed += store.delete_class_detections(cls)
+            store.save()
+            st.session_state["_thumb_cache"] = {}
+            st.session_state["_review_grid_counter"] = (
+                st.session_state.get("_review_grid_counter", 0) + 1
+            )
+            st.toast(f"Deleted {total_removed} known-class detection(s)")
+            st.rerun()
+    with col_keep:
+        if st.button(
+            ":material/edit: Keep labels and manually edit",
+            type="primary" if not recommend_delete else "secondary",
+            key="_keep_known_labels",
+        ):
+            st.toast("OK — review each detection individually below")
+
+
+# ===================================================================
 # PHASE 2: Review Detections
 # ===================================================================
 
@@ -61,16 +154,46 @@ def _phase_review(ds: YOLODataset, store: VerificationStore, args: argparse.Name
                 unsafe_allow_html=True,
             )
 
-    # Persistent auto-detect toggle (saved in project.json)
-    auto_detect_default = bool(ds.get_setting("auto_detect", True))
-    auto_detect = st.checkbox(
-        "Automatically detect objects",
-        value=auto_detect_default,
-        key="_auto_detect_toggle",
-        help="Run YOLO auto-detection when viewing an image with no annotations.",
-    )
-    if auto_detect != auto_detect_default:
-        ds.set_setting("auto_detect", auto_detect)
+    # --- Batch detect all undetected images ---
+    undetected = [
+        img for img in images
+        if (iv := store.get(img.name)) is not None
+        and not iv.detected
+        and not iv.fully_reviewed
+    ]
+    if undetected:
+        if st.button(
+            f":material/search: Detect all ({len(undetected)} undetected images)",
+            key="_batch_detect_all",
+        ):
+            from pyzm.train.local_import import _detection_summary
+
+            progress = st.progress(0, text="Detecting...")
+            log_area = st.empty()
+            log_lines: list[str] = []
+            det_total = 0
+            for i, img_path in enumerate(undetected):
+                dets = _auto_detect_image(img_path, args)
+                det_total += len(dets)
+                iv_item = store.get(img_path.name)
+                if iv_item is not None:
+                    iv_item.detections = dets
+                    iv_item.detected = True
+                    store.set(iv_item)
+                summary = _detection_summary(dets)
+                log_lines.append(f"{img_path.name}: {summary}")
+                log_area.code("\n".join(log_lines[-8:]), language=None)
+                progress.progress(
+                    (i + 1) / len(undetected),
+                    text=f"Detecting... {i + 1}/{len(undetected)}",
+                )
+            store.save()
+            progress.progress(1.0, text=f"Done: {det_total} detections across {len(undetected)} images")
+            st.toast(f"Detected {det_total} objects across {len(undetected)} images")
+            st.rerun()
+
+    # --- Annotation guidance + bulk cleanup ---
+    _annotation_guidance(ds, store, images)
 
     # --- Filter bar ---
     reviewed_count = store.reviewed_images_count()
@@ -131,7 +254,7 @@ def _phase_review(ds: YOLODataset, store: VerificationStore, args: argparse.Name
 
     # Dispatch: expanded single-image view or thumbnail grid
     if "_review_expanded_idx" in st.session_state:
-        _review_expanded(ds, store, args, filtered, auto_detect)
+        _review_expanded(ds, store, args, filtered)
     else:
         _review_grid(store, filtered, page_size)
 
@@ -185,7 +308,6 @@ def _review_expanded(
     store: VerificationStore,
     args: argparse.Namespace,
     filtered: list[Path],
-    auto_detect: bool,
 ) -> None:
     """Single-image expanded view launched from the grid."""
     expanded_idx = st.session_state.get("_review_expanded_idx", 0)
@@ -201,15 +323,17 @@ def _review_expanded(
         iv = ImageVerification(image_name=img_path.name)
         store.set(iv)
 
-    # On-demand auto-detection
+    # On-demand auto-detection for images that haven't been detected yet
     _ran_autodetect = False
-    if auto_detect and not iv.detections and not iv.fully_reviewed:
+    if not iv.detected and not iv.fully_reviewed:
         _ran_autodetect = True
         detections = _auto_detect_image(img_path, args)
+        iv.detected = True
         if detections:
             iv.detections = detections
-            store.set(iv)
-            store.save()
+        store.set(iv)
+        store.save()
+        if detections:
             _invalidate_thumbnail(img_path.name)
 
     if _ran_autodetect and not iv.detections:
@@ -338,14 +462,29 @@ def _review_expanded(
     if not reshape_det_id and not pending_rects:
         st.divider()
         pending = [d for d in iv.detections if d.status == DetectionStatus.PENDING]
+        active = iv.active_detections
+        all_deleted = iv.detections and not active and not pending
         is_last = expanded_idx >= len(filtered) - 1
         filter_mode = st.session_state.get("_review_filter", "all")
+
+        if all_deleted:
+            st.info(
+                "All detections deleted — this image will be used as a "
+                "**negative/background** example during training "
+                "(teaches the model nothing is here)."
+            )
 
         if pending:
             btn_label = (
                 f"Approve all ({len(pending)}) & back to grid"
                 if is_last
                 else f"Approve all ({len(pending)}) & next"
+            )
+        elif all_deleted:
+            btn_label = (
+                "Confirm as background & back to grid"
+                if is_last
+                else "Confirm as background & next"
             )
         else:
             btn_label = "Next image" if not is_last else "Back to grid"
@@ -370,9 +509,20 @@ def _review_expanded(
                 st.session_state["_review_expanded_idx"] = expanded_idx + 1
             st.rerun()
 
-    # --- Re-review & Remove image ---
+    # --- Re-detect, Re-review & Remove image ---
     if not reshape_det_id and not pending_rects:
-        re_col, rm_col = st.columns(2)
+        det_col, re_col, rm_col = st.columns(3)
+        with det_col:
+            if st.button(":material/search: Re-detect", key=f"redetect_{image_name}"):
+                new_dets = _auto_detect_image(img_path, args)
+                iv.detections = new_dets
+                iv.detected = True
+                iv.fully_reviewed = False
+                changed = True
+                if new_dets:
+                    st.toast(f"Re-detected {len(new_dets)} object(s)")
+                else:
+                    st.toast("No objects detected")
         with re_col:
             if iv.fully_reviewed:
                 if st.button(":material/undo: Re-review", key=f"rereview_{image_name}"):
@@ -390,13 +540,7 @@ def _review_expanded(
             yes_col, no_col = st.columns(2)
             with yes_col:
                 if st.button("Yes, remove", type="primary", key=f"rmimg_yes_{image_name}"):
-                    # Remove image and label files
-                    img_file = ds._images_dir / image_name
-                    label_file = ds._labels_dir / (img_path.stem + ".txt")
-                    if img_file.exists():
-                        img_file.unlink()
-                    if label_file.exists():
-                        label_file.unlink()
+                    ds.remove_image(image_name)
                     store.remove(image_name)
                     store.save()
                     _invalidate_thumbnail(image_name)

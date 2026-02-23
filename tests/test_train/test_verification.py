@@ -293,6 +293,23 @@ class TestVerificationStore:
         store.set(ImageVerification("b.jpg"))
         assert sorted(store.all_images()) == ["a.jpg", "b.jpg"]
 
+    def test_clear_all(self, tmp_path: Path):
+        store = VerificationStore(tmp_path)
+        store.set(ImageVerification("a.jpg", fully_reviewed=True))
+        store.set(ImageVerification("b.jpg"))
+        store.set(ImageVerification("c.jpg"))
+        assert len(store.all_images()) == 3
+
+        store.clear_all()
+        assert store.all_images() == []
+        assert store.pending_count() == 0
+        assert store.reviewed_images_count() == 0
+
+    def test_clear_all_empty_store(self, tmp_path: Path):
+        store = VerificationStore(tmp_path)
+        store.clear_all()  # should not raise
+        assert store.all_images() == []
+
     def test_corrupt_json_starts_fresh(self, tmp_path: Path):
         (tmp_path / "verifications.json").write_text("{bad json")
         store = VerificationStore(tmp_path)
@@ -455,6 +472,83 @@ class TestClassesNeedingUpload:
             ]))
         result = store.classes_needing_upload(min_images=10)
         assert result == []
+
+    def test_delete_class_detections(self, tmp_path: Path):
+        """Bulk-delete all detections of a given class."""
+        store = VerificationStore(tmp_path)
+        store.set(ImageVerification("a.jpg", detections=[
+            VerifiedDetection("d0", self._ann(), DetectionStatus.APPROVED, original_label="person"),
+            VerifiedDetection("d1", self._ann(), DetectionStatus.PENDING, original_label="car"),
+            VerifiedDetection("d2", self._ann(), DetectionStatus.APPROVED, original_label="person"),
+        ]))
+        store.set(ImageVerification("b.jpg", detections=[
+            VerifiedDetection("d0", self._ann(), DetectionStatus.APPROVED, original_label="person"),
+            VerifiedDetection("d1", self._ann(), DetectionStatus.DELETED, original_label="person"),
+        ]))
+        count = store.delete_class_detections("person")
+        assert count == 3  # 2 from a.jpg + 1 from b.jpg (already-deleted one skipped)
+
+        # Verify all person detections are now DELETED
+        for iv in [store.get("a.jpg"), store.get("b.jpg")]:
+            for det in iv.detections:
+                if det.original_label == "person":
+                    assert det.status == DetectionStatus.DELETED
+
+        # car detection untouched
+        a_iv = store.get("a.jpg")
+        car_det = [d for d in a_iv.detections if d.original_label == "car"][0]
+        assert car_det.status == DetectionStatus.PENDING
+
+    def test_delete_class_detections_renamed(self, tmp_path: Path):
+        """Bulk-delete uses effective_label, so renamed detections match."""
+        store = VerificationStore(tmp_path)
+        store.set(ImageVerification("a.jpg", detections=[
+            VerifiedDetection("d0", self._ann(), DetectionStatus.RENAMED,
+                              original_label="truck", new_label="vehicle"),
+        ]))
+        count = store.delete_class_detections("vehicle")
+        assert count == 1
+        assert store.get("a.jpg").detections[0].status == DetectionStatus.DELETED
+
+    def test_delete_class_detections_nonexistent(self, tmp_path: Path):
+        """Deleting a class that doesn't exist returns 0."""
+        store = VerificationStore(tmp_path)
+        store.set(ImageVerification("a.jpg", detections=[
+            VerifiedDetection("d0", self._ann(), DetectionStatus.APPROVED, original_label="car"),
+        ]))
+        assert store.delete_class_detections("nonexistent") == 0
+
+    def test_class_detection_counts(self, tmp_path: Path):
+        """Count non-deleted detections per class."""
+        store = VerificationStore(tmp_path)
+        store.set(ImageVerification("a.jpg", detections=[
+            VerifiedDetection("d0", self._ann(), DetectionStatus.APPROVED, original_label="person"),
+            VerifiedDetection("d1", self._ann(), DetectionStatus.APPROVED, original_label="person"),
+            VerifiedDetection("d2", self._ann(), DetectionStatus.APPROVED, original_label="car"),
+            VerifiedDetection("d3", self._ann(), DetectionStatus.DELETED, original_label="car"),
+        ]))
+        store.set(ImageVerification("b.jpg", detections=[
+            VerifiedDetection("d0", self._ann(), DetectionStatus.PENDING, original_label="person"),
+        ]))
+        counts = store.class_detection_counts()
+        assert counts["person"] == {"detections": 3, "images": 2}
+        assert counts["car"] == {"detections": 1, "images": 1}
+        assert "car" in counts  # deleted one should not contribute
+        # The deleted car detection should not be counted — only 1 of 2 car dets remains
+        assert counts["car"]["detections"] == 1
+
+    def test_class_detection_counts_empty(self, tmp_path: Path):
+        """Empty store returns empty dict."""
+        store = VerificationStore(tmp_path)
+        assert store.class_detection_counts() == {}
+
+    def test_class_detection_counts_all_deleted(self, tmp_path: Path):
+        """All-deleted detections produce empty counts."""
+        store = VerificationStore(tmp_path)
+        store.set(ImageVerification("a.jpg", detections=[
+            VerifiedDetection("d0", self._ann(), DetectionStatus.DELETED, original_label="person"),
+        ]))
+        assert store.class_detection_counts() == {}
 
     def test_approved_person_added_package_one_image(self, tmp_path: Path):
         """1 image: person approved, package added → needs package uploads."""

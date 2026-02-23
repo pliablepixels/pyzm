@@ -224,6 +224,16 @@ class YOLODataset:
         self._staged_cache = None  # invalidate cache
         return dest
 
+    def remove_image(self, image_name: str) -> None:
+        """Delete an image and its label file from staging."""
+        img = self._images_dir / image_name
+        lbl = self._labels_dir / (Path(image_name).stem + ".txt")
+        if img.exists():
+            img.unlink()
+        if lbl.exists():
+            lbl.unlink()
+        self._staged_cache = None  # invalidate cache
+
     def update_annotations(
         self,
         image_name: str,

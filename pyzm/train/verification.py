@@ -140,20 +140,28 @@ class ImageVerification:
     image_name: str
     detections: list[VerifiedDetection] = field(default_factory=list)
     fully_reviewed: bool = False
+    detected: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "image_name": self.image_name,
             "detections": [d.to_dict() for d in self.detections],
             "fully_reviewed": self.fully_reviewed,
         }
+        if self.detected:
+            d["detected"] = True
+        return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> ImageVerification:
+        detections = [VerifiedDetection.from_dict(det) for det in d.get("detections", [])]
+        # Backfill: if detections exist, detection must have run
+        detected = d.get("detected", bool(detections))
         return cls(
             image_name=d["image_name"],
-            detections=[VerifiedDetection.from_dict(det) for det in d.get("detections", [])],
+            detections=detections,
             fully_reviewed=d.get("fully_reviewed", False),
+            detected=detected,
         )
 
     @property
@@ -204,6 +212,10 @@ class VerificationStore:
     def remove(self, image_name: str) -> None:
         """Remove an image from the store."""
         self._data.pop(image_name, None)
+
+    def clear_all(self) -> None:
+        """Remove all image verification entries."""
+        self._data.clear()
 
     def all_images(self) -> list[str]:
         return list(self._data.keys())
@@ -345,6 +357,40 @@ class VerificationStore:
             for iv in self._data.values()
             for det in iv.detections
         )
+
+    def delete_class_detections(self, class_name: str) -> int:
+        """Mark all non-deleted detections of *class_name* as DELETED.
+
+        Returns the number of detections changed.
+        """
+        count = 0
+        for iv in self._data.values():
+            for det in iv.detections:
+                if (det.effective_label == class_name
+                        and det.status != DetectionStatus.DELETED):
+                    det.status = DetectionStatus.DELETED
+                    count += 1
+        return count
+
+    def class_detection_counts(self) -> dict[str, dict[str, int]]:
+        """Count non-deleted detections per class.
+
+        Returns ``{class_name: {"detections": N, "images": M}}``.
+        """
+        from collections import defaultdict
+        per_class: dict[str, set[str]] = defaultdict(set)
+        det_counts: dict[str, int] = defaultdict(int)
+        for iv in self._data.values():
+            for det in iv.detections:
+                if det.status != DetectionStatus.DELETED:
+                    label = det.effective_label
+                    if label:
+                        per_class[label].add(iv.image_name)
+                        det_counts[label] += 1
+        return {
+            cls: {"detections": det_counts[cls], "images": len(imgs)}
+            for cls, imgs in per_class.items()
+        }
 
     def finalized_annotations(
         self,
