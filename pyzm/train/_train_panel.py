@@ -12,7 +12,7 @@ import numpy as np
 import streamlit as st
 from PIL import Image
 
-from pyzm.train.app import MIN_IMAGES_PER_CLASS, _section_header
+from pyzm.train.app import MIN_IMAGES_PER_CLASS, _section_header, _step_expander
 from pyzm.train.dataset import YOLODataset
 from pyzm.train.trainer import (
     HardwareInfo,
@@ -62,35 +62,6 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
         )
         return
 
-    hw = YOLOTrainer.detect_hardware()
-
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        epochs = st.number_input(
-            "Epochs", min_value=1, max_value=300, value=50, step=10,
-            help="How many times to review all images during training. 50 is usually good for fine-tuning.",
-        )
-    with col2:
-        batch = st.number_input(
-            "Batch", min_value=1, max_value=128, value=hw.suggested_batch,
-            help="Images processed at once. Auto-detected for your hardware.",
-        )
-    with col3:
-        imgsz = st.selectbox(
-            "Image size", [416, 640], index=1,
-            help="Resolution for training. 640 is standard.",
-        )
-    with col4:
-        st.caption(hw.display)
-
-    adaptive = adaptive_finetune_params(len(images))
-    st.caption(
-        f":material/tune: Adaptive fine-tuning ({adaptive['tier']} dataset, "
-        f"{len(images)} images): freeze={adaptive['freeze']}, "
-        f"lr0={adaptive['lr0']}, patience={adaptive['patience']}, "
-        f"cos_lr={adaptive['cos_lr']}, val_ratio={adaptive['val_ratio']}"
-    )
-
     # Shared mutable dict — background thread mutates contents,
     # main thread reads.  Lives in session_state so it survives reruns.
     shared: dict = st.session_state.get("_train_shared", {})
@@ -100,148 +71,207 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
         disk_result = TrainResult.from_disk(Path(pdir))
         if disk_result is not None:
             shared["result"] = disk_result
+            # Check for existing ONNX export
+            best_onnx = Path(pdir) / "runs" / "train" / "weights" / "best.onnx"
+            if best_onnx.exists():
+                shared["onnx_path"] = str(best_onnx)
             st.session_state["_train_shared"] = shared
             if "classes" not in st.session_state:
                 st.session_state["classes"] = classes
 
-    if not shared.get("active", False):
-        all_ready = not needs
-        st.info(
-            f"This fine-tuned model will **only** detect the following "
-            f"{len(classes)} object(s): **{', '.join(classes)}**. "
-            f"It will not retain the base model's original classes. "
-            f"To detect other objects, run the base model alongside this one."
+    result: TrainResult | None = shared.get("result")
+    training_active = shared.get("active", False)
+    train_done = result is not None
+
+    # === Step 1: Configure training ===
+    with _step_expander("Configure training", done=train_done or training_active):
+        hw = YOLOTrainer.detect_hardware()
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            epochs = st.number_input(
+                "Epochs", min_value=1, max_value=300, value=50, step=10,
+                help="How many times to review all images during training. 50 is usually good for fine-tuning.",
+            )
+        with col2:
+            batch = st.number_input(
+                "Batch", min_value=1, max_value=128, value=hw.suggested_batch,
+                help="Images processed at once. Auto-detected for your hardware.",
+            )
+        with col3:
+            imgsz = st.selectbox(
+                "Image size", [416, 640], index=1,
+                help="Resolution for training. 640 is standard.",
+            )
+        with col4:
+            st.caption(hw.display)
+
+        ft_mode = st.radio(
+            "Fine-tuning mode",
+            options=["new_class", "refine"],
+            format_func=lambda x: "New class" if x == "new_class" else "Refine existing",
+            horizontal=True,
+            help=(
+                "**New class**: teaching the model an object it has never seen "
+                "(e.g. gun, knife). Uses minimal augmentation so the model "
+                "learns clean representations first.\n\n"
+                "**Refine existing**: improving detection of a class the model "
+                "already knows (e.g. adding your camera's person images). "
+                "Uses moderate augmentation to help generalise."
+            ),
         )
-        if hw.device == "cpu":
-            st.warning(
-                "Training on CPU will be significantly slower than GPU. "
-                "Consider using a machine with a CUDA-capable GPU for faster training."
-            )
-        # Training duration estimate
-        hw_factor = 1 if hw.device != "cpu" else 8
-        est_minutes = int((len(images) * epochs) / (batch * 60) * hw_factor)
-        if est_minutes > 0:
-            st.caption(f":material/timer: Estimated training time: ~{est_minutes} minutes (rough estimate)")
-        if st.button(":material/rocket_launch: Start Training", type="primary", disabled=not all_ready):
-            class_name_to_id = {c: i for i, c in enumerate(classes)}
-            ds.set_classes(classes)
-            yaml_path = ds.generate_yaml()
 
-            trainer = YOLOTrainer(
-                base_model=base_model,
-                project_dir=Path(pdir),
-                device=hw.device,
-            )
-            shared = {
-                "active": True,
-                "progress": TrainProgress(
-                    total_epochs=epochs, message="Preparing dataset...",
-                ),
-                "result": None,
-                "log": [],
-                "adaptive": adaptive,
-            }
-            import time as _time
-            shared["start_time"] = _time.time()
-            shared["image_count"] = len(images)
-            st.session_state["_train_shared"] = shared
-            st.session_state["trainer"] = trainer
-            st.session_state["classes"] = classes
+        adaptive = adaptive_finetune_params(len(images), mode=ft_mode)
+        st.caption(
+            f":material/tune: Adaptive fine-tuning ({adaptive['tier']} dataset, "
+            f"{adaptive['mode']} mode, {len(images)} images): "
+            f"freeze={adaptive['freeze']}, lr0={adaptive['lr0']}, "
+            f"mosaic={adaptive['mosaic']}, erasing={adaptive['erasing']}, "
+            f"patience={adaptive['patience']}"
+        )
 
-            def _run(_s: dict = shared) -> None:
-                # ── Dataset preparation (runs in background) ──
-                # Skip rewriting annotations when the dataset was
-                # imported with the same classes and nothing was modified.
-                import_classes = ds.get_setting("import_classes")
-                need_rewrite = (
-                    store.has_modifications()
-                    or import_classes != classes
+        if not training_active:
+            all_ready = not needs
+            st.info(
+                f"This fine-tuned model will **only** detect the following "
+                f"{len(classes)} object(s): **{', '.join(classes)}**. "
+                f"It will not retain the base model's original classes. "
+                f"To detect other objects, run the base model alongside this one."
+            )
+            if hw.device == "cpu":
+                st.warning(
+                    "Training on CPU will be significantly slower than GPU. "
+                    "Consider using a machine with a CUDA-capable GPU for faster training."
                 )
+            hw_factor = 1 if hw.device != "cpu" else 8
+            est_minutes = int((len(images) * epochs) / (batch * 60) * hw_factor)
+            if est_minutes > 0:
+                st.caption(f":material/timer: Estimated training time: ~{est_minutes} minutes (rough estimate)")
+            if st.button(":material/rocket_launch: Start Training", type="primary", disabled=not all_ready):
+                class_name_to_id = {c: i for i, c in enumerate(classes)}
+                ds.set_classes(classes)
+                yaml_path = ds.generate_yaml()
 
-                n = len(images)
-                if need_rewrite:
-                    for i, img_path in enumerate(images):
-                        anns = store.finalized_annotations(
-                            img_path.name, class_name_to_id,
-                        )
-                        ds.update_annotations(img_path.name, anns)
-                        if n > 100 and (i + 1) % 50 == 0:
-                            _s["progress"] = TrainProgress(
-                                total_epochs=epochs,
-                                message=f"Writing annotations {i + 1}/{n}",
-                            )
+                trainer = YOLOTrainer(
+                    base_model=base_model,
+                    project_dir=Path(pdir),
+                    device=hw.device,
+                )
+                shared = {
+                    "active": True,
+                    "progress": TrainProgress(
+                        total_epochs=epochs, message="Preparing dataset...",
+                    ),
+                    "result": None,
+                    "log": [],
+                    "adaptive": adaptive,
+                }
+                import time as _time
+                shared["start_time"] = _time.time()
+                shared["image_count"] = len(images)
+                st.session_state["_train_shared"] = shared
+                st.session_state["trainer"] = trainer
+                st.session_state["classes"] = classes
 
-                # Re-split only if annotations changed or no split exists yet
-                split_map = ds.get_setting("split_map") or {}
-                has_split = ds._train_images.exists() and any(ds._train_images.iterdir())
-                if need_rewrite or not has_split:
-                    _s["progress"] = TrainProgress(
-                        total_epochs=epochs,
-                        message="Splitting into train/val...",
+                def _run(_s: dict = shared) -> None:
+                    import_classes = ds.get_setting("import_classes")
+                    need_rewrite = (
+                        store.has_modifications()
+                        or import_classes != classes
                     )
-                    ds.split(_s["adaptive"]["val_ratio"])
 
-                _s["progress"] = TrainProgress(
-                    total_epochs=epochs, message="Loading model...",
-                )
+                    n = len(images)
+                    if need_rewrite:
+                        for i, img_path in enumerate(images):
+                            anns = store.finalized_annotations(
+                                img_path.name, class_name_to_id,
+                            )
+                            ds.update_annotations(img_path.name, anns)
+                            if n > 100 and (i + 1) % 50 == 0:
+                                _s["progress"] = TrainProgress(
+                                    total_epochs=epochs,
+                                    message=f"Writing annotations {i + 1}/{n}",
+                                )
 
-                # ── Training ──
-                def _cb(p: TrainProgress) -> None:
-                    _s["progress"] = p
+                    split_map = ds.get_setting("split_map") or {}
+                    has_split = ds._train_images.exists() and any(ds._train_images.iterdir())
+                    if need_rewrite or not has_split:
+                        _s["progress"] = TrainProgress(
+                            total_epochs=epochs,
+                            message="Splitting into train/val...",
+                        )
+                        ds.split(_s["adaptive"]["val_ratio"])
 
-                # Capture all output (logging + stdout/stderr)
-                class _TrainLogHandler(logging.Handler):
-                    def emit(self, record: logging.LogRecord) -> None:
-                        log = _s["log"]
-                        log.append(self.format(record))
-                        if len(log) > 200:
-                            del log[:-200]
+                    _s["progress"] = TrainProgress(
+                        total_epochs=epochs, message="Loading model...",
+                    )
 
-                class _StreamCapture:
-                    """Tee writes to the original stream and the shared log."""
-                    def __init__(self, original):
-                        self._original = original
-                    def write(self, text):
-                        self._original.write(text)
-                        if text.strip():
+                    def _cb(p: TrainProgress) -> None:
+                        _s["progress"] = p
+
+                    class _TrainLogHandler(logging.Handler):
+                        def emit(self, record: logging.LogRecord) -> None:
                             log = _s["log"]
-                            log.append(text.rstrip())
+                            log.append(self.format(record))
                             if len(log) > 200:
                                 del log[:-200]
-                    def flush(self):
-                        self._original.flush()
-                    def __getattr__(self, name):
-                        return getattr(self._original, name)
 
-                handler = _TrainLogHandler()
-                handler.setFormatter(logging.Formatter("%(message)s"))
-                ul_logger = logging.getLogger("ultralytics")
-                ul_logger.addHandler(handler)
-                ul_logger.setLevel(logging.INFO)
-                old_stdout, old_stderr = sys.stdout, sys.stderr
-                sys.stdout = _StreamCapture(old_stdout)
-                sys.stderr = _StreamCapture(old_stderr)
-                try:
-                    _adapt = _s["adaptive"]
-                    _train_extra = {
-                        k: _adapt[k] for k in ("freeze", "lr0", "patience", "cos_lr")
-                    }
-                    r = trainer.train(
-                        dataset_yaml=yaml_path, epochs=epochs,
-                        batch=batch, imgsz=imgsz, progress_callback=_cb,
-                        **_train_extra,
-                    )
-                    _s["result"] = r
-                except Exception as exc:
-                    _s["progress"] = TrainProgress(finished=True, error=str(exc))
-                finally:
-                    sys.stdout, sys.stderr = old_stdout, old_stderr
-                    ul_logger.removeHandler(handler)
-                    _s["active"] = False
+                    class _StreamCapture:
+                        def __init__(self, original):
+                            self._original = original
+                        def write(self, text):
+                            self._original.write(text)
+                            if text.strip():
+                                log = _s["log"]
+                                log.append(text.rstrip())
+                                if len(log) > 200:
+                                    del log[:-200]
+                        def flush(self):
+                            self._original.flush()
+                        def __getattr__(self, name):
+                            return getattr(self._original, name)
 
-            threading.Thread(target=_run, daemon=True).start()
-            st.rerun()
-    else:
+                    handler = _TrainLogHandler()
+                    handler.setFormatter(logging.Formatter("%(message)s"))
+                    ul_logger = logging.getLogger("ultralytics")
+                    ul_logger.addHandler(handler)
+                    ul_logger.setLevel(logging.INFO)
+                    old_stdout, old_stderr = sys.stdout, sys.stderr
+                    sys.stdout = _StreamCapture(old_stdout)
+                    sys.stderr = _StreamCapture(old_stderr)
+                    try:
+                        _adapt = _s["adaptive"]
+                        _train_extra = {
+                            k: _adapt[k] for k in (
+                                "freeze", "lr0", "patience", "cos_lr",
+                                "mosaic", "erasing", "scale", "mixup", "close_mosaic",
+                            )
+                        }
+                        r = trainer.train(
+                            dataset_yaml=yaml_path, epochs=epochs,
+                            batch=batch, imgsz=imgsz, progress_callback=_cb,
+                            **_train_extra,
+                        )
+                        # Auto-export ONNX
+                        if r.best_model:
+                            try:
+                                onnx_path = trainer.export_onnx()
+                                _s["onnx_path"] = str(onnx_path)
+                            except Exception as exc:
+                                _s["onnx_error"] = str(exc)
+                        _s["result"] = r
+                    except Exception as exc:
+                        _s["progress"] = TrainProgress(finished=True, error=str(exc))
+                    finally:
+                        sys.stdout, sys.stderr = old_stdout, old_stderr
+                        ul_logger.removeHandler(handler)
+                        _s["active"] = False
+
+                threading.Thread(target=_run, daemon=True).start()
+                st.rerun()
+
+    # === Training progress (not in expander — must stay visible) ===
+    if training_active:
         st.warning("Do not close this browser tab while training is in progress. Training will be lost.")
         p: TrainProgress = shared.get("progress") or TrainProgress()
         if p.total_epochs > 0:
@@ -263,11 +293,9 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
         t1.markdown(f":material/timer: **Elapsed Time:** {elapsed_str}")
         t2.markdown(f":material/image: **Training Images:** {img_count}")
 
-        # User-friendly metrics
         m1, m2, m3 = st.columns(3)
         m1.metric("Epoch", f"{p.epoch}/{p.total_epochs}")
 
-        # Box accuracy trend
         prev_box = st.session_state.get("_prev_box_loss")
         if prev_box is not None and p.box_loss > 0:
             if p.box_loss < prev_box - 0.001:
@@ -286,7 +314,6 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
             st.session_state["_prev_box_loss"] = p.box_loss
         m2.markdown(f":{box_color}[{box_label}]")
 
-        # Detection quality from mAP50
         mAP_pct = p.mAP50 * 100
         if mAP_pct >= 80:
             quality = "Excellent"
@@ -310,7 +337,6 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
             if trainer:
                 trainer.request_stop()
 
-        # Live training log
         train_log = shared.get("log", [])
         if train_log:
             st.code("\n".join(train_log[-30:]), language=None)
@@ -322,53 +348,54 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
             time.sleep(2)
             st.rerun()
 
-    # Results + Export
-    result: TrainResult | None = shared.get("result")
-    if result:
-        st.markdown(
-            '<div style="background:#1B5E20;padding:0.8rem 1rem;'
-            'border-radius:0.5rem;margin:1rem 0;">'
-            '<h2 style="color:white;text-align:center;margin:0;">'
-            '&#x2705; Training Complete</h2></div>',
-            unsafe_allow_html=True,
-        )
+    # === Step 2: Training results ===
+    if train_done:
+        with _step_expander(
+            "Training results",
+            done=True,
+            detail=f"mAP50: {result.final_mAP50:.3f}",
+        ):
+            r1, r2, r3, r4 = st.columns(4)
+            r1.metric("mAP50", f"{result.final_mAP50:.3f}")
+            r2.metric("mAP50-95", f"{result.final_mAP50_95:.3f}")
+            r3.metric("Size", f"{result.model_size_mb:.1f} MB")
+            r4.metric("Time", f"{result.elapsed_seconds / 60:.1f} min")
 
-        r1, r2, r3, r4 = st.columns(4)
-        r1.metric("mAP50", f"{result.final_mAP50:.3f}")
-        r2.metric("mAP50-95", f"{result.final_mAP50_95:.3f}")
-        r3.metric("Size", f"{result.model_size_mb:.1f} MB")
-        r4.metric("Time", f"{result.elapsed_seconds / 60:.1f} min")
+            best_ep_label = (
+                f"Epoch {result.best_epoch}/{result.total_epochs}"
+                if result.best_epoch > 0
+                else f"{result.total_epochs} epochs"
+            )
+            st.caption(f":material/star: Best model from: **{best_ep_label}**")
 
-        best_ep_label = (
-            f"Epoch {result.best_epoch}/{result.total_epochs}"
-            if result.best_epoch > 0
-            else f"{result.total_epochs} epochs"
-        )
-        st.caption(f":material/star: Best model from: **{best_ep_label}**")
+            if result.per_class:
+                import pandas as pd
 
-        if result.per_class:
-            import pandas as pd
+                rows = []
+                for cls_name, cm in sorted(result.per_class.items()):
+                    rows.append({
+                        "Class": cls_name,
+                        "Precision": f"{cm.precision:.3f}",
+                        "Recall": f"{cm.recall:.3f}",
+                        "AP@50": f"{cm.ap50:.3f}",
+                        "AP@50-95": f"{cm.ap50_95:.3f}",
+                    })
+                st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
-            rows = []
-            for cls_name, cm in sorted(result.per_class.items()):
-                rows.append({
-                    "Class": cls_name,
-                    "Precision": f"{cm.precision:.3f}",
-                    "Recall": f"{cm.recall:.3f}",
-                    "AP@50": f"{cm.ap50:.3f}",
-                    "AP@50-95": f"{cm.ap50_95:.3f}",
-                })
-            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+            # ONNX export result
+            onnx_path = shared.get("onnx_path")
+            onnx_error = shared.get("onnx_error")
+            if onnx_path:
+                st.success(f":material/download_done: ONNX exported: `{onnx_path}`")
+            elif onnx_error:
+                st.warning(f"ONNX export failed: {onnx_error}")
 
-        if result.best_model:
-            st.code(str(result.best_model), language=None)
+            pdir = st.session_state.get("workspace_dir")
+            if pdir:
+                st.caption(f"Dataset: `{pdir}`")
+                _training_analysis(result, Path(pdir) / "runs" / "train")
 
-        pdir = st.session_state.get("workspace_dir")
-        if pdir:
-            st.caption(f"Dataset: `{pdir}`")
-            _training_analysis(result, Path(pdir) / "runs" / "train")
-
-        _phase_export(args)
+            _test_image_panel()
 
 
 def _training_analysis(result: TrainResult, train_dir: Path) -> None:
@@ -485,10 +512,9 @@ def _training_analysis(result: TrainResult, train_dir: Path) -> None:
                     _show_full(str(val_preds), "Predictions")
 
 
-def _phase_export(args: argparse.Namespace) -> None:
-    _section_header("&#x1F4E6;", "Export Model")
+def _test_image_panel() -> None:
+    """Let the user test the trained model on an image."""
     pdir = st.session_state.get("workspace_dir")
-    classes = st.session_state.get("classes", [])
     base_model = st.session_state.get("base_model", "yolo11s")
     if not pdir:
         return
@@ -497,68 +523,32 @@ def _phase_export(args: argparse.Namespace) -> None:
     if not best_pt.exists():
         return
 
+    classes = st.session_state.get("classes", [])
     st.info(
         f"This fine-tuned model only detects: **{', '.join(classes)}**. "
         f"To also detect standard objects (person, car, etc.), add both models "
         f"to your `objectconfig.yml` and use `same_model_sequence_strategy: union` "
-        f"to merge results:\n"
-        f"```yaml\n"
-        f"same_model_sequence_strategy: union\n"
-        f"```\n"
-        f"Then list your base model and this fine-tuned model as separate entries "
-        f"under the `object` sequence."
+        f"to merge results."
     )
 
-    suggested_name = f"{base_model}_finetune.onnx"
-    export_path = st.text_input(
-        "Export ONNX to",
-        value=str(Path(args.base_path) / "custom_finetune" / suggested_name),
-    )
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button(":material/download: Export ONNX", type="primary"):
-            trainer = YOLOTrainer(base_model=base_model, project_dir=Path(pdir))
-            with st.spinner("Exporting..."):
-                try:
-                    onnx_path = trainer.export_onnx(output_path=Path(export_path))
-                    st.success(f"Exported: `{onnx_path}`")
-                    st.code(
-                        f"models:\n"
-                        f"  - name: {onnx_path.stem}\n"
-                        f"    type: object\n"
-                        f"    framework: opencv\n"
-                        f"    weights: {onnx_path}\n"
-                        f"    min_confidence: 0.3\n"
-                        f"    pattern: \"({'|'.join(classes)})\"\n",
-                        language="yaml",
-                    )
-                    st.caption(
-                        "Add this to your `objectconfig.yml` (usually at `/etc/zm/`) "
-                        "under the `models:` section."
-                    )
-                except Exception as exc:
-                    st.error(str(exc))
-
-    with col2:
-        test_file = st.file_uploader("Test image", type=["jpg", "jpeg", "png"], key="test_img")
-        if test_file:
-            trainer = YOLOTrainer(base_model=base_model, project_dir=Path(pdir))
-            pil_img = Image.open(test_file).convert("RGB")
-            img_array = np.array(pil_img)
-            try:
-                dets = trainer.evaluate(img_array[..., ::-1])
-                from PIL import ImageDraw
-                draw_img = pil_img.copy()
-                draw = ImageDraw.Draw(draw_img)
-                for d in dets:
-                    x1, y1, x2, y2 = d["bbox"]
-                    draw.rectangle([x1, y1, x2, y2], outline="lime", width=2)
-                    draw.text((x1, max(0, y1 - 12)), f"{d['label']} {d['confidence']:.0%}", fill="lime")
-                st.image(draw_img, width="stretch")
-                if dets:
-                    st.caption(", ".join(f"{d['label']} {d['confidence']:.0%}" for d in dets))
-                else:
-                    st.caption("No detections")
-            except Exception as exc:
-                st.error(str(exc))
+    test_file = st.file_uploader("Test image", type=["jpg", "jpeg", "png"], key="test_img")
+    if test_file:
+        trainer = YOLOTrainer(base_model=base_model, project_dir=Path(pdir))
+        pil_img = Image.open(test_file).convert("RGB")
+        img_array = np.array(pil_img)
+        try:
+            dets = trainer.evaluate(img_array[..., ::-1])
+            from PIL import ImageDraw
+            draw_img = pil_img.copy()
+            draw = ImageDraw.Draw(draw_img)
+            for d in dets:
+                x1, y1, x2, y2 = d["bbox"]
+                draw.rectangle([x1, y1, x2, y2], outline="lime", width=2)
+                draw.text((x1, max(0, y1 - 12)), f"{d['label']} {d['confidence']:.0%}", fill="lime")
+            st.image(draw_img, width="stretch")
+            if dets:
+                st.caption(", ".join(f"{d['label']} {d['confidence']:.0%}" for d in dets))
+            else:
+                st.caption("No detections")
+        except Exception as exc:
+            st.error(str(exc))

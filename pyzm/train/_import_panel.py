@@ -9,7 +9,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from pyzm.train.app import MIN_IMAGES_PER_CLASS, _section_header
+from pyzm.train.app import MIN_IMAGES_PER_CLASS, _section_header, _step_expander
 from pyzm.train.dataset import Annotation, YOLODataset
 from pyzm.train.verification import (
     DetectionStatus,
@@ -129,6 +129,15 @@ def _upload_panel(
 def _phase_select(ds: YOLODataset, store: VerificationStore, args: argparse.Namespace) -> None:
     _section_header("&#x1F4F7;", "Select Images")
 
+    images = ds.staged_images()
+    has_images = len(images) > 0
+    saved_path = ds.get_setting("import_source_path")
+    all_reviewed = (
+        has_images
+        and store.pending_count() == 0
+        and store.reviewed_images_count() >= len(images)
+    )
+
     # Show banner when classes need more training images
     needs = store.classes_needing_upload(min_images=MIN_IMAGES_PER_CLASS)
     if needs:
@@ -138,41 +147,57 @@ def _phase_select(ds: YOLODataset, store: VerificationStore, args: argparse.Name
         )
         st.info(f"Classes needing more images: {summary}")
 
-    source = st.radio(
-        "Data source",
-        ["Pre-Annotated YOLO Dataset", "Raw Images", "ZoneMinder Events"],
-        horizontal=True,
-        key="data_source",
-    )
+    # --- Step 1: Select path to images ---
+    path_done = bool(saved_path) or has_images
+    path_detail = str(saved_path) if saved_path else ("previously imported" if has_images else "")
+    with _step_expander(
+        "Select path to images",
+        done=path_done,
+        detail=path_detail,
+    ):
+        source = st.radio(
+            "Data source",
+            ["Pre-Annotated YOLO Dataset", "Raw Images", "ZoneMinder Events"],
+            horizontal=True,
+            key="data_source",
+        )
 
-    if source == "Pre-Annotated YOLO Dataset":
-        st.caption("Import a pre-annotated dataset in YOLO format.")
-        from pyzm.train.local_import import local_dataset_panel
-        local_dataset_panel(ds, store, args)
-    elif source == "Raw Images":
-        st.caption("Import unannotated images for manual annotation.")
-        from pyzm.train.local_import import raw_images_panel
-        raw_images_panel(ds, store, args)
-    else:
-        st.caption("Select events where detection was wrong or missing.")
-        from pyzm.train.zm_browser import zm_event_browser_panel
-        zm_event_browser_panel(ds, store, args)
+        if source == "Pre-Annotated YOLO Dataset":
+            st.caption("Import a pre-annotated dataset in YOLO format.")
+            from pyzm.train.local_import import local_dataset_panel
+            local_dataset_panel(ds, store, args)
+        elif source == "Raw Images":
+            st.caption("Import unannotated images for manual annotation.")
+            from pyzm.train.local_import import raw_images_panel
+            raw_images_panel(ds, store, args)
+        else:
+            st.caption("Select events where detection was wrong or missing.")
+            from pyzm.train.zm_browser import zm_event_browser_panel
+            zm_event_browser_panel(ds, store, args)
 
-    images = ds.staged_images()
-    if images:
-        st.divider()
-        st.success(f"{len(images)} image{'s' if len(images) != 1 else ''} imported. Ready for review.")
-        if st.button(":material/rate_review: Go to Review", type="primary"):
-            st.session_state["active_phase"] = "review"
-            st.session_state.pop("_auto_label", None)
-            st.rerun()
-        # Show image list in collapsed expander; cap to avoid slow renders
-        max_show = 200
-        with st.expander(f"Imported images ({len(images)})", expanded=False):
-            for img in images[:max_show]:
-                iv = store.get(img.name)
-                status = "\u2713" if iv and iv.fully_reviewed else "\u23f3"
-                det_count = len(iv.detections) if iv else 0
-                st.caption(f"{status} {img.name} ({det_count} annotations)")
-            if len(images) > max_show:
-                st.caption(f"... and {len(images) - max_show} more")
+    # --- Step 2: Import images ---
+    with _step_expander(
+        "Import images",
+        done=has_images,
+        detail=f"{len(images)} images" if has_images else "",
+    ):
+        if has_images:
+            st.success(
+                f"{len(images)} image{'s' if len(images) != 1 else ''} imported."
+            )
+        else:
+            st.info("Select a data source and import images above.")
+
+    # --- Step 3: Review images ---
+    with _step_expander("Review images", done=all_reviewed):
+        if not has_images:
+            st.info("Import images first.")
+        elif all_reviewed:
+            st.success("All images reviewed.")
+        else:
+            reviewed = store.reviewed_images_count()
+            st.caption(f"Reviewed: {reviewed} / {len(images)}")
+            if st.button(":material/rate_review: Go to Review", type="primary"):
+                st.session_state["active_phase"] = "review"
+                st.session_state.pop("_auto_label", None)
+                st.rerun()

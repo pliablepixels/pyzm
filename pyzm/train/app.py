@@ -118,6 +118,11 @@ def _inject_css() -> None:
         font-size: 0.95rem; font-weight: 600; margin: 0;
     }
     .pyzm-project-card .meta { color: #94A3B8; font-size: 0.8rem; }
+    /* Green check_circle icons in sidebar buttons and expanders */
+    [data-testid="stExpander"] span[data-testid="stIconMaterial"],
+    section[data-testid="stSidebar"] span[data-testid="stIconMaterial"] {
+        color: #27AE60 !important;
+    }
     </style>""", unsafe_allow_html=True)
 
 
@@ -129,6 +134,15 @@ def _section_header(icon: str, title: str) -> None:
         f'<h3>{title}</h3></div>',
         unsafe_allow_html=True,
     )
+
+
+def _step_expander(
+    label: str, *, done: bool = False, detail: str = "",
+):
+    """Collapsible step: collapsed with checkmark when done, expanded when pending."""
+    prefix = ":material/check_circle:" if done else "\u25CB"
+    suffix = f" \u2014 {detail}" if detail else ""
+    return st.expander(f"{prefix} {label}{suffix}", expanded=not done)
 
 
 # ===================================================================
@@ -434,8 +448,8 @@ def _sidebar(ds: YOLODataset | None, store: VerificationStore | None) -> str:
         ]
         for key, label, done in phases:
             prefix = "▸ " if key == current else "  "
-            check = " ✓" if done else ""
-            btn_label = f"{prefix}{label}{check}"
+            icon = ":material/check_circle:" if done else ""
+            btn_label = f"{prefix}{icon} {label}" if icon else f"{prefix}{label}"
             if st.button(btn_label, key=f"phase_{key}", width="stretch"):
                 st.session_state["active_phase"] = key
                 st.session_state.pop("_auto_label", None)
