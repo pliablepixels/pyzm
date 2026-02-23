@@ -3,6 +3,33 @@
 All notable changes to this project will be documented in this file.
 
 
+## [2.1.7] - 2026-02-23
+
+### Bug Fixes
+
+- restore import path for existing projects and add class filtering ([3e57145](https://github.com/pliablepixels/pyzm/commit/3e57145925aca29b535a5b3ef486bdcdb138b01b))
+
+### Documentation
+
+- fix training guide discrepancies with codebase ([6a0e64b](https://github.com/pliablepixels/pyzm/commit/6a0e64b8a22dd760e95783e1854835c64333635d))
+- update training guide for annotation strategy and --correct workflow ([2f26b23](https://github.com/pliablepixels/pyzm/commit/2f26b23fd5e54c5ebec1fd7a09ad3fee2fe0890d))
+- update training guide for mode-based augmentation and UI changes ([618e44d](https://github.com/pliablepixels/pyzm/commit/618e44d7ec1d08a0aff4e58691de18c9edd77b70))
+- add testing section for fine-tuned models ([6951cf3](https://github.com/pliablepixels/pyzm/commit/6951cf343ba87542224f481227f704111134bfc2))
+
+### Features
+
+- annotation guidance, bulk cleanup, and streamlined UI ([28ab194](https://github.com/pliablepixels/pyzm/commit/28ab194bf70edfa12e875b114015f27dca717f39))
+- headless --correct workflow for batch detect-and-retrain ([bd8d1b6](https://github.com/pliablepixels/pyzm/commit/bd8d1b6bbcceaf863b5cf2f4cb9983a37a55cc00))
+- collapsible step UI with green checkmarks and auto-ONNX export ([94e4b67](https://github.com/pliablepixels/pyzm/commit/94e4b67137310d343fb1824eda8295c2157d04cf))
+- mode-based augmentation for new_class vs refine fine-tuning ([e1bdb5d](https://github.com/pliablepixels/pyzm/commit/e1bdb5d5f38642b27d9c23a5a1b66ff9bd442395))
+- adaptive fine-tuning hyperparameters based on dataset size ([9d89075](https://github.com/pliablepixels/pyzm/commit/9d890754b1ff49639b7927e6d4b2bfe309f53726))
+- restore previous training results when reopening a project ([f0905e4](https://github.com/pliablepixels/pyzm/commit/f0905e4cc81f03af767a229224beb2432627fd11))
+- add test_finetuned_model example script ([567943e](https://github.com/pliablepixels/pyzm/commit/567943ecad3c001a83cb3cc955a33b0347e6692c))
+
+### Miscellaneous
+
+- bump version to v2.1.7 ([7ecb2d3](https://github.com/pliablepixels/pyzm/commit/7ecb2d3e92fc07ff3b7ce840c21c64ab427eb81c))
+
 ## [2.1.6] - 2026-02-22
 
 ### Bug Fixes
@@ -16,6 +43,10 @@ All notable changes to this project will be documented in this file.
 - move streamlit import to avoid breaking headless mode ([ae46723](https://github.com/pliablepixels/pyzm/commit/ae467237eb613c441c938d69020ac9ec30bd6405))
 - remove hardcoded developer IP from ZM browser default URL ([590a862](https://github.com/pliablepixels/pyzm/commit/590a862ed751937b39da4f95667ab80a707e6b9a))
 - fall back to Storage Id=1 when event's StorageId is invalid ([c9f81b2](https://github.com/pliablepixels/pyzm/commit/c9f81b2b9b0bed8c2dc9e81c363eaf9b389394c6))
+
+### Documentation
+
+- update CHANGELOG for v2.1.6 ([f1a69fd](https://github.com/pliablepixels/pyzm/commit/f1a69fd7f651d92639fd39e4bfe2af5fe31a6fed))
 
 ### Features
 
