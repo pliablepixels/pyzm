@@ -107,6 +107,7 @@ Full flags:
        --device cuda:0 \
        --project-name my_project \
        --max-per-class 50 \
+       --mode new_class \
        --output /tmp/model.onnx
 
 CLI options (headless mode):
@@ -144,6 +145,12 @@ CLI options (headless mode):
    importing everything. Applied before ``--val-ratio`` splitting.
    Default: ``0`` (import all).
 
+``--mode``
+   Fine-tuning mode. ``new_class`` for teaching the model an object it has
+   never seen (minimal augmentation — mosaic off for small datasets).
+   ``refine`` for improving detection of a class the model already knows
+   (moderate augmentation). Default: ``new_class``
+
 ``--workspace-dir``
    Override the project storage directory.
    Default: ``~/.pyzm/training``
@@ -160,6 +167,7 @@ Programmatic usage:
        epochs=50,
        model="yolo11s",
        max_per_class=50,  # 0 = import all (default)
+       mode="new_class",  # or "refine" for existing classes
    )
    print(f"mAP50: {result.final_mAP50:.4f}")
 
@@ -175,7 +183,9 @@ Import training images from one of three sources:
 
 - **Pre-Annotated YOLO Dataset** -- import an existing dataset in YOLO format
   (e.g. from Roboflow). The UI reads the ``data.yaml`` and imports images with
-  their annotations already attached.
+  their annotations already attached. You can optionally filter out classes you
+  don't need using the **Classes to ignore** selector — annotations for ignored
+  classes are skipped and class IDs are remapped automatically.
 
 - **Raw Images** -- upload unannotated images (JPG, PNG, etc.). The base model
   runs auto-detection on each image, giving you a starting point to correct.
@@ -184,6 +194,11 @@ Import training images from one of three sources:
   events, and import frames directly. This is the most natural workflow for
   fixing detection problems: find an event where the model failed, import the
   frame, and correct the labels.
+
+This phase is organized into three collapsible sub-steps — **Select path**,
+**Import images**, and **Review images** — each showing a green checkmark when
+complete. When you reopen an existing project, the dataset path is
+automatically restored and completed steps remain collapsed.
 
 When the UI detects that certain classes need more training images (based on
 your review corrections), it shows a banner at the top of this phase listing
@@ -212,19 +227,34 @@ you make a mistake.
 Once all images are reviewed and classes have enough data:
 
 - Configure training parameters (epochs, batch size, image size)
+- Select the **fine-tuning mode**:
+
+  - **New class** — for teaching the model an object it has never seen
+    (e.g. gun, knife). Uses minimal augmentation so the model learns clean
+    representations first. Mosaic is off for small datasets.
+  - **Refine existing** — for improving detection of a class the model
+    already knows (e.g. adding your camera's person images). Uses moderate
+    augmentation to help generalise.
+
 - The UI auto-detects GPU/CPU and suggests an appropriate batch size
+- **Adaptive hyperparameters** are displayed — freeze layers, learning rate,
+  mosaic, erasing, and patience are all tuned automatically based on
+  dataset size and fine-tuning mode. The backbone is always frozen and
+  cosine LR is always enabled to prevent pretrained feature destruction.
 - Click **Start Training** to begin fine-tuning
 - A live progress bar shows epoch, loss curves, and mAP metrics
 - Training logs are displayed in real time
 
-After training completes, the UI shows:
+After training completes:
 
+- **ONNX export runs automatically** — no manual export step needed. The
+  exported path is displayed in the results.
 - **Results summary** -- mAP50, mAP50-95, model size, training time
 - **Per-class metrics** -- precision, recall, and AP for each class
 - **Training analysis** -- interpretive guidance on the quality of your model,
   training curves, confusion matrix, F1/PR curves, and validation samples
-- **Export** -- export the fine-tuned model as ONNX with a ready-to-use
-  snippet for your ``objectconfig.yml``
+- **Test image** -- upload an image to verify the fine-tuned model's
+  detections before deploying
 
 Projects
 --------
@@ -236,6 +266,55 @@ annotations, verification state, and training runs independently under
 When you launch the UI, you can create a new project or resume an existing
 one. The **Switch Project** and **Reset Project** buttons in the sidebar let
 you manage projects.
+
+Adaptive Fine-Tuning
+--------------------
+
+Training hyperparameters are automatically tuned based on your dataset size
+and fine-tuning mode. This ensures that fine-tuning never overwrites
+pretrained feature representations.
+
+**Dataset size tiers:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 15 15 15 15
+
+   * - Tier
+     - Images
+     - Freeze
+     - Learning Rate
+     - Patience
+   * - Small
+     - < 200
+     - 10 layers
+     - 0.0005
+     - 10
+   * - Medium
+     - 200–999
+     - 10 layers
+     - 0.001
+     - 15
+   * - Large
+     - 1,000–4,999
+     - 5 layers
+     - 0.002
+     - 20
+   * - XLarge
+     - 5,000+
+     - 3 layers
+     - 0.005
+     - 25
+
+All tiers freeze backbone layers and use cosine LR annealing.
+
+**Fine-tuning modes:**
+
+- ``new_class`` — minimal augmentation. Mosaic is off for small/medium
+  datasets (< 1,000 images) because stitching 4 images of an unknown object
+  creates unrealistic composites. Erasing is off or very low.
+- ``refine`` — moderate augmentation from the start, since the model already
+  understands the object structure. Mosaic 0.3–0.8, erasing 0.1–0.3.
 
 Testing the fine-tuned model
 ----------------------------
