@@ -74,6 +74,69 @@ class TrainResult:
     log_lines: list[str] = field(default_factory=list)
     per_class: dict[str, ClassMetrics] = field(default_factory=dict)
 
+    @classmethod
+    def from_disk(cls, project_dir: Path) -> TrainResult | None:
+        """Reconstruct a TrainResult from a previous training run on disk.
+
+        Returns None if no completed training run exists.
+        """
+        import csv
+
+        train_dir = project_dir / "runs" / "train"
+        best_pt = train_dir / "weights" / "best.pt"
+        csv_path = train_dir / "results.csv"
+        if not best_pt.exists() or not csv_path.exists():
+            return None
+
+        # Parse results.csv for metrics
+        try:
+            with open(csv_path) as f:
+                reader = csv.DictReader(f)
+                reader.fieldnames = [n.strip() for n in (reader.fieldnames or [])]
+                total_epochs = 0
+                best_epoch = 0
+                best_map50 = -1.0
+                final_map50 = 0.0
+                final_map50_95 = 0.0
+                for row in reader:
+                    epoch_str = row.get("epoch", "").strip()
+                    if not epoch_str:
+                        continue
+                    total_epochs = int(epoch_str) + 1  # 0-based -> 1-based
+
+                    map50_val = 0.0
+                    map50_95_val = 0.0
+                    for key in row:
+                        if "mAP50(B)" in key and "mAP50-95" not in key:
+                            map50_val = float(row[key].strip())
+                        elif "mAP50-95(B)" in key:
+                            map50_95_val = float(row[key].strip())
+
+                    final_map50 = map50_val
+                    final_map50_95 = map50_95_val
+                    if map50_val > best_map50:
+                        best_map50 = map50_val
+                        best_epoch = total_epochs
+        except Exception:
+            logger.debug("Could not parse results.csv for from_disk", exc_info=True)
+            return None
+
+        if total_epochs == 0:
+            return None
+
+        last_pt = train_dir / "weights" / "last.pt"
+        model_size = best_pt.stat().st_size / (1024 * 1024)
+
+        return cls(
+            best_model=best_pt,
+            last_model=last_pt if last_pt.exists() else None,
+            best_epoch=best_epoch,
+            final_mAP50=final_map50,
+            final_mAP50_95=final_map50_95,
+            total_epochs=total_epochs,
+            model_size_mb=model_size,
+        )
+
 
 class YOLOTrainer:
     """Wraps Ultralytics YOLO for fine-tuning.

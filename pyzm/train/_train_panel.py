@@ -81,6 +81,15 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
     # main thread reads.  Lives in session_state so it survives reruns.
     shared: dict = st.session_state.get("_train_shared", {})
 
+    # Restore previous training results from disk if no active session
+    if not shared.get("active") and shared.get("result") is None:
+        disk_result = TrainResult.from_disk(Path(pdir))
+        if disk_result is not None:
+            shared["result"] = disk_result
+            st.session_state["_train_shared"] = shared
+            if "classes" not in st.session_state:
+                st.session_state["classes"] = classes
+
     if not shared.get("active", False):
         all_ready = not needs
         st.info(
