@@ -133,6 +133,7 @@ class TestRunHeadless:
             device="auto",
             workspace_dir=None,
             max_per_class=0,
+            mode="new_class",
         )
 
         with patch("pyzm.train.pipeline.run_pipeline") as mock_rp:
@@ -144,6 +145,7 @@ class TestRunHeadless:
         assert str(call_kwargs[0][0]) == "/path/to/dataset"
         assert call_kwargs[1]["epochs"] == 50
         assert call_kwargs[1]["batch"] is None
+        assert call_kwargs[1]["mode"] == "new_class"
 
     def test_pipeline_error_exits(self):
         """_run_headless exits with code 1 on pipeline ValueError."""
@@ -159,6 +161,7 @@ class TestRunHeadless:
             device="auto",
             workspace_dir=None,
             max_per_class=0,
+            mode="new_class",
         )
 
         with patch("pyzm.train.pipeline.run_pipeline", side_effect=ValueError("bad")):

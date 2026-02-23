@@ -138,48 +138,111 @@ class TrainResult:
         )
 
 
-def adaptive_finetune_params(n_images: int) -> dict[str, object]:
-    """Return dataset-size-appropriate training hyperparameters.
+def adaptive_finetune_params(
+    n_images: int, *, mode: str = "new_class",
+) -> dict[str, object]:
+    """Return dataset-size-appropriate fine-tuning hyperparameters.
 
-    Smaller datasets need more aggressive regularisation (frozen backbone,
-    lower learning rate, cosine schedule) to avoid overfitting.
+    This is always a **fine-tune** — pretrained weights must be preserved.
+    Every tier freezes backbone layers, uses cosine LR annealing, and keeps
+    learning rates conservative so new data never overwrites the pretrained
+    feature representations.
 
     Parameters
     ----------
     n_images:
         Total number of training images.
+    mode:
+        ``"new_class"`` — teaching the model a class it has never seen.
+        Augmentation is minimal so the model learns clean representations
+        before seeing distorted variants (mosaic off for small datasets,
+        erasing off or very low).
+
+        ``"refine"`` — improving detection of a class the model already
+        knows (e.g. adding domain-specific camera images).  Moderate
+        augmentation is safe because the model already understands the
+        object structure.
 
     Returns
     -------
     Dict with keys: ``freeze``, ``lr0``, ``patience``, ``cos_lr``,
-    ``val_ratio``, ``tier`` (informational label).
+    ``val_ratio``, ``mosaic``, ``erasing``, ``scale``, ``mixup``,
+    ``close_mosaic``, ``tier``, ``mode``.
     """
+    if mode not in ("new_class", "refine"):
+        raise ValueError(f"mode must be 'new_class' or 'refine', got {mode!r}")
+
+    # -- Base hyperparameters (same regardless of mode) --
     if n_images < 200:
-        return {
+        base = {
+            "freeze": 10,
+            "lr0": 0.0005,
+            "patience": 10,
+            "cos_lr": True,
+            "val_ratio": 0.15,
+            "tier": "small",
+        }
+    elif n_images < 1000:
+        base = {
             "freeze": 10,
             "lr0": 0.001,
             "patience": 15,
             "cos_lr": True,
             "val_ratio": 0.15,
-            "tier": "small",
-        }
-    if n_images < 1000:
-        return {
-            "freeze": 5,
-            "lr0": 0.005,
-            "patience": 30,
-            "cos_lr": True,
-            "val_ratio": 0.2,
             "tier": "medium",
         }
-    return {
-        "freeze": 0,
-        "lr0": 0.01,
-        "patience": 50,
-        "cos_lr": False,
-        "val_ratio": 0.2,
-        "tier": "large",
+    elif n_images < 5000:
+        base = {
+            "freeze": 5,
+            "lr0": 0.002,
+            "patience": 20,
+            "cos_lr": True,
+            "val_ratio": 0.2,
+            "tier": "large",
+        }
+    else:
+        base = {
+            "freeze": 3,
+            "lr0": 0.005,
+            "patience": 25,
+            "cos_lr": True,
+            "val_ratio": 0.2,
+            "tier": "xlarge",
+        }
+
+    # -- Augmentation (varies by mode + dataset size) --
+    #
+    # new_class: model has never seen this object.  Mosaic stitches 4
+    #   images into one — for an unknown class this creates unrealistic
+    #   composites the model can't learn from.  Erasing removes parts of
+    #   an object the model hasn't learned yet.  Keep both off/low until
+    #   the dataset is large enough to absorb the noise.
+    #
+    # refine: model already recognises the class.  Augmentation helps it
+    #   generalise to new angles/lighting without forgetting the original
+    #   representation.
+    tier = base["tier"]
+    _AUG = {
+        "new_class": {
+            "small":  {"mosaic": 0.0, "erasing": 0.0,  "scale": 0.2, "mixup": 0.0},
+            "medium": {"mosaic": 0.0, "erasing": 0.0,  "scale": 0.3, "mixup": 0.0},
+            "large":  {"mosaic": 0.3, "erasing": 0.1,  "scale": 0.4, "mixup": 0.0},
+            "xlarge": {"mosaic": 0.5, "erasing": 0.15, "scale": 0.5, "mixup": 0.0},
+        },
+        "refine": {
+            "small":  {"mosaic": 0.3, "erasing": 0.1,  "scale": 0.3, "mixup": 0.0},
+            "medium": {"mosaic": 0.5, "erasing": 0.15, "scale": 0.4, "mixup": 0.0},
+            "large":  {"mosaic": 0.7, "erasing": 0.2,  "scale": 0.5, "mixup": 0.0},
+            "xlarge": {"mosaic": 0.8, "erasing": 0.3,  "scale": 0.5, "mixup": 0.05},
+        },
     }
+    aug = _AUG[mode][tier]
+
+    # Disable mosaic for final 10 epochs so the model trains on clean
+    # images before finishing (standard Ultralytics practice).
+    aug["close_mosaic"] = 10
+
+    return {**base, **aug, "mode": mode}
 
 
 class YOLOTrainer:

@@ -37,6 +37,7 @@ def run_pipeline(
     output: Path | None = None,
     device: str = "auto",
     max_per_class: int = 0,
+    mode: str = "new_class",
 ) -> TrainResult:
     """Run the full training pipeline headlessly.
 
@@ -66,6 +67,8 @@ def run_pipeline(
         ``"auto"``, ``"cpu"``, or ``"cuda:0"`` etc.
     max_per_class:
         If > 0, keep at most this many images per class before importing.
+    mode:
+        ``"new_class"`` or ``"refine"`` — controls augmentation strategy.
     """
     dataset_path = Path(dataset_path).resolve()
     workspace = Path(workspace_dir) if workspace_dir else _DEFAULT_WORKSPACE
@@ -99,11 +102,11 @@ def run_pipeline(
     print(f"  {img_count} images, {det_count} annotations")
 
     # --- Adaptive hyperparameters -------------------------------------------
-    adaptive = adaptive_finetune_params(img_count)
-    print(f"Adaptive fine-tuning ({adaptive['tier']} dataset, {img_count} images): "
-          f"freeze={adaptive['freeze']}, lr0={adaptive['lr0']}, "
-          f"patience={adaptive['patience']}, cos_lr={adaptive['cos_lr']}, "
-          f"val_ratio={adaptive['val_ratio']}")
+    adaptive = adaptive_finetune_params(img_count, mode=mode)
+    print(f"Adaptive fine-tuning ({adaptive['tier']} dataset, {adaptive['mode']} mode, "
+          f"{img_count} images): freeze={adaptive['freeze']}, lr0={adaptive['lr0']}, "
+          f"mosaic={adaptive['mosaic']}, erasing={adaptive['erasing']}, "
+          f"patience={adaptive['patience']}, cos_lr={adaptive['cos_lr']}")
 
     # --- 3. Split + YAML ----------------------------------------------------
     # Respect explicit CLI --val-ratio; otherwise use adaptive value
@@ -118,7 +121,10 @@ def run_pipeline(
     effective_batch = batch if batch is not None else hw.suggested_batch
     effective_device = device if device != "auto" else hw.device
 
-    train_extra = {k: adaptive[k] for k in ("freeze", "lr0", "patience", "cos_lr")}
+    train_extra = {k: adaptive[k] for k in (
+        "freeze", "lr0", "patience", "cos_lr",
+        "mosaic", "erasing", "scale", "mixup", "close_mosaic",
+    )}
     print(f"Training: model={model}, epochs={epochs}, batch={effective_batch}, "
           f"imgsz={imgsz}, device={effective_device}")
 

@@ -22,40 +22,91 @@ from pyzm.train.trainer import (
 # ---------------------------------------------------------------------------
 
 class TestAdaptiveFinetuneParams:
-    """Test dataset-size-adaptive hyperparameter selection."""
+    """Test dataset-size-adaptive hyperparameter selection.
 
-    _EXPECTED_KEYS = {"freeze", "lr0", "patience", "cos_lr", "val_ratio", "tier"}
+    Every tier must freeze backbone layers and use cosine LR to ensure
+    fine-tuning never overwrites pretrained feature representations.
+    Augmentation varies by mode (new_class vs refine).
+    """
+
+    _EXPECTED_KEYS = {
+        "freeze", "lr0", "patience", "cos_lr", "val_ratio", "tier",
+        "mosaic", "erasing", "scale", "mixup", "close_mosaic", "mode",
+    }
 
     def test_expected_keys(self):
         result = adaptive_finetune_params(100)
         assert set(result.keys()) == self._EXPECTED_KEYS
 
-    def test_small_tier(self):
+    def test_default_mode_is_new_class(self):
+        assert adaptive_finetune_params(100)["mode"] == "new_class"
+
+    def test_invalid_mode_raises(self):
+        with pytest.raises(ValueError, match="mode must be"):
+            adaptive_finetune_params(100, mode="bad")
+
+    # --- new_class mode (default) ---
+
+    def test_small_new_class(self):
         p = adaptive_finetune_params(50)
         assert p["tier"] == "small"
         assert p["freeze"] == 10
-        assert p["lr0"] == pytest.approx(0.001)
-        assert p["patience"] == 15
+        assert p["lr0"] == pytest.approx(0.0005)
+        assert p["patience"] == 10
         assert p["cos_lr"] is True
         assert p["val_ratio"] == pytest.approx(0.15)
+        assert p["mosaic"] == pytest.approx(0.0)
+        assert p["erasing"] == pytest.approx(0.0)
 
-    def test_medium_tier(self):
+    def test_medium_new_class(self):
         p = adaptive_finetune_params(500)
         assert p["tier"] == "medium"
-        assert p["freeze"] == 5
-        assert p["lr0"] == pytest.approx(0.005)
-        assert p["patience"] == 30
-        assert p["cos_lr"] is True
-        assert p["val_ratio"] == pytest.approx(0.2)
+        assert p["freeze"] == 10
+        assert p["lr0"] == pytest.approx(0.001)
+        assert p["mosaic"] == pytest.approx(0.0)
+        assert p["erasing"] == pytest.approx(0.0)
 
-    def test_large_tier(self):
+    def test_large_new_class(self):
         p = adaptive_finetune_params(2000)
         assert p["tier"] == "large"
-        assert p["freeze"] == 0
-        assert p["lr0"] == pytest.approx(0.01)
-        assert p["patience"] == 50
-        assert p["cos_lr"] is False
-        assert p["val_ratio"] == pytest.approx(0.2)
+        assert p["freeze"] == 5
+        assert p["lr0"] == pytest.approx(0.002)
+        assert p["mosaic"] == pytest.approx(0.3)
+        assert p["erasing"] == pytest.approx(0.1)
+
+    def test_xlarge_new_class(self):
+        p = adaptive_finetune_params(10000)
+        assert p["tier"] == "xlarge"
+        assert p["freeze"] == 3
+        assert p["lr0"] == pytest.approx(0.005)
+        assert p["mosaic"] == pytest.approx(0.5)
+        assert p["erasing"] == pytest.approx(0.15)
+
+    # --- refine mode ---
+
+    def test_small_refine(self):
+        p = adaptive_finetune_params(50, mode="refine")
+        assert p["tier"] == "small"
+        assert p["mode"] == "refine"
+        assert p["mosaic"] == pytest.approx(0.3)
+        assert p["erasing"] == pytest.approx(0.1)
+        # Base params unchanged by mode
+        assert p["freeze"] == 10
+        assert p["lr0"] == pytest.approx(0.0005)
+
+    def test_large_refine(self):
+        p = adaptive_finetune_params(2000, mode="refine")
+        assert p["tier"] == "large"
+        assert p["mosaic"] == pytest.approx(0.7)
+        assert p["erasing"] == pytest.approx(0.2)
+
+    def test_xlarge_refine(self):
+        p = adaptive_finetune_params(10000, mode="refine")
+        assert p["tier"] == "xlarge"
+        assert p["mosaic"] == pytest.approx(0.8)
+        assert p["mixup"] == pytest.approx(0.05)
+
+    # --- boundaries ---
 
     def test_boundary_199_is_small(self):
         assert adaptive_finetune_params(199)["tier"] == "small"
@@ -69,10 +120,49 @@ class TestAdaptiveFinetuneParams:
     def test_boundary_1000_is_large(self):
         assert adaptive_finetune_params(1000)["tier"] == "large"
 
+    def test_boundary_4999_is_large(self):
+        assert adaptive_finetune_params(4999)["tier"] == "large"
+
+    def test_boundary_5000_is_xlarge(self):
+        assert adaptive_finetune_params(5000)["tier"] == "xlarge"
+
     def test_minimal_dataset(self):
         p = adaptive_finetune_params(1)
         assert p["tier"] == "small"
         assert p["freeze"] == 10
+
+    # --- invariants (must hold for ALL tiers and modes) ---
+
+    _ALL_SIZES = (1, 50, 199, 200, 500, 999, 1000, 2000, 4999, 5000, 50000)
+
+    def test_all_tiers_freeze_backbone(self):
+        """Fine-tuning must always freeze some backbone layers."""
+        for n in self._ALL_SIZES:
+            for m in ("new_class", "refine"):
+                p = adaptive_finetune_params(n, mode=m)
+                assert p["freeze"] > 0, f"n={n} mode={m} has freeze=0"
+
+    def test_all_tiers_use_cosine_lr(self):
+        """Cosine annealing must always be enabled."""
+        for n in self._ALL_SIZES:
+            for m in ("new_class", "refine"):
+                p = adaptive_finetune_params(n, mode=m)
+                assert p["cos_lr"] is True, f"n={n} mode={m} has cos_lr=False"
+
+    def test_new_class_never_exceeds_refine_augmentation(self):
+        """new_class augmentation must be <= refine for the same tier."""
+        for n in self._ALL_SIZES:
+            nc = adaptive_finetune_params(n, mode="new_class")
+            rf = adaptive_finetune_params(n, mode="refine")
+            assert nc["mosaic"] <= rf["mosaic"], f"n={n} mosaic"
+            assert nc["erasing"] <= rf["erasing"], f"n={n} erasing"
+            assert nc["mixup"] <= rf["mixup"], f"n={n} mixup"
+
+    def test_small_new_class_has_no_mosaic(self):
+        """Small new-class datasets must not use mosaic at all."""
+        for n in (1, 50, 100, 199):
+            p = adaptive_finetune_params(n, mode="new_class")
+            assert p["mosaic"] == 0.0, f"n={n} has mosaic={p['mosaic']}"
 
 
 # ---------------------------------------------------------------------------

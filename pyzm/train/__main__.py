@@ -71,6 +71,16 @@ def main() -> None:
         default=0,
         help="Max images per class to import (default: 0 = all)",
     )
+    ap.add_argument(
+        "--mode",
+        default="new_class",
+        choices=["new_class", "refine"],
+        help=(
+            "Fine-tuning mode (default: new_class). "
+            "'new_class' = teaching a brand new class (minimal augmentation). "
+            "'refine' = improving an existing class (moderate augmentation)."
+        ),
+    )
 
     # --- Shared flag ---
     ap.add_argument(
@@ -132,6 +142,7 @@ def _run_headless(args: argparse.Namespace) -> None:
             output=output,
             device=args.device,
             max_per_class=args.max_per_class,
+            mode=args.mode,
         )
     except (ValueError, FileNotFoundError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
