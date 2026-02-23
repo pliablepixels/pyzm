@@ -45,7 +45,8 @@ Launching the UI
 
    /opt/zoneminder/venv/bin/python -m pyzm.train
 
-Or directly via Streamlit:
+Or directly via Streamlit (note: ``--host`` / ``--port`` are not available
+in this form — use ``python -m pyzm.train`` instead):
 
 .. code-block:: bash
 
@@ -58,7 +59,7 @@ Or directly via Streamlit:
    target ``/usr/bin/python3`` and attempt global installs with
    ``--break-system-packages``, which will fail with permission errors.
 
-Options:
+Options (for ``python -m pyzm.train`` without a dataset argument):
 
 ``--base-path``
    Path to your ZoneMinder models directory.
@@ -110,10 +111,10 @@ Full flags:
        --mode new_class \
        --output /tmp/model.onnx
 
-CLI options (headless mode):
+CLI options (shared by headless and ``--correct`` modes):
 
 ``dataset`` (positional)
-   Path to YOLO dataset folder.
+   Path to YOLO dataset folder (headless mode only).
 
 ``--model``
    Base YOLO model. Default: ``yolo11s``
@@ -154,6 +155,18 @@ CLI options (headless mode):
 ``--workspace-dir``
    Override the project storage directory.
    Default: ``~/.pyzm/training``
+
+``--base-path``
+   Path to your ZoneMinder models directory (used to locate the base
+   model for ``--correct`` mode).
+   Default: ``/var/lib/zmeventnotification/models``
+
+``--processor``
+   ``gpu`` or ``cpu`` for auto-detection. Default: ``gpu``
+
+``--min-confidence``
+   Minimum confidence threshold for auto-detection (``--correct`` mode).
+   Default: ``0.3``
 
 Correct Model (headless)
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -196,6 +209,20 @@ Programmatic usage:
    )
    print(f"mAP50: {result.final_mAP50:.4f}")
 
+For the correct-model workflow:
+
+.. code-block:: python
+
+   from pathlib import Path
+   from pyzm.train import run_correct_pipeline
+
+   result = run_correct_pipeline(
+       Path("/path/to/images"),
+       model="yolo11s",
+       epochs=100,
+   )
+   print(f"mAP50: {result.final_mAP50:.4f}")
+
 Workflow
 --------
 
@@ -221,10 +248,10 @@ Import training images using one of two modes:
   annotations for ignored classes are skipped and class IDs are remapped
   automatically.
 
-This phase is organized into three collapsible sub-steps — **Select path**,
-**Import images**, and **Review images** — each showing a green checkmark when
-complete. When you reopen an existing project, the dataset path is
-automatically restored and completed steps remain collapsed.
+This phase is organized into three collapsible sub-steps — **Base model**,
+**Images**, and **Review images** — each showing a green checkmark when
+complete. When you reopen an existing project, the base model and dataset
+path are automatically restored and completed steps remain collapsed.
 
 When the UI detects that certain classes need more training images (based on
 your review corrections), it shows a banner at the top of this phase listing
@@ -241,11 +268,20 @@ For each imported image, review the auto-detected bounding boxes:
 - **Reshape** -- drag/resize a box that's too large or misaligned
 - **Add** -- draw new boxes for objects the model missed
 
-The sidebar shows an image navigator and per-class coverage (how many images
-contain each class vs. the minimum needed for training).
+The sidebar shows an image navigator, per-class coverage (how many images
+contain each class vs. the minimum needed for training), and a **Bulk Approve**
+slider that approves all pending detections above a confidence threshold in one
+click.
 
-You can expand the canvas for more precise drawing, and clear drawn boxes if
-you make a mistake.
+Additional review tools:
+
+- **Filter bar** -- filter the image grid by status (all / approved /
+  unapproved) and by object class.
+- **Re-detect** -- re-run the model on a single image to refresh detections.
+- **Re-review** -- reopen an already-reviewed image for further edits.
+- **Remove Image** -- remove an image from the project entirely.
+- **Expand canvas** -- enlarge the drawing area for more precise box placement.
+  Clear drawn boxes if you make a mistake.
 
 3. Train & Export
 ^^^^^^^^^^^^^^^^^
@@ -297,8 +333,9 @@ When teaching the model a completely new object (e.g. package, gun, knife):
 - **Remove** detections for classes the base model already knows (person, car,
   dog, etc.). The base model was trained on millions of images and will always
   outperform a model fine-tuned on 20–500 images for those classes.
-- The Review UI shows bulk **"Delete all"** buttons for known-class detections
-  to make this quick.
+- The Review UI automatically identifies which classes the base model already
+  knows and shows a contextual recommendation with a one-click **"Delete all
+  known labels"** button to remove them in bulk.
 
 What to Label (Refine Mode)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -359,7 +396,7 @@ annotations, verification state, and training runs independently under
 ``~/.pyzm/training/<project-name>/``.
 
 When you launch the UI, you can create a new project or resume an existing
-one. The **Switch Project** and **Reset Project** buttons in the sidebar let
+one. The **Switch Project** and **Delete Project** buttons in the sidebar let
 you manage projects.
 
 Adaptive Fine-Tuning
