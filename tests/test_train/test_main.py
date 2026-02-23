@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from pyzm.train.__main__ import main, _run_headless, _run_ui
+from pyzm.train.__main__ import main, _run_correct, _run_headless, _run_ui
 
 
 # ---------------------------------------------------------------------------
@@ -17,15 +17,18 @@ from pyzm.train.__main__ import main, _run_headless, _run_ui
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     """Call main() with *argv* and capture the parsed Namespace.
 
-    Mocks both _run_headless and _run_ui so no real work is done.
+    Mocks _run_headless, _run_ui, and _run_correct so no real work is done.
     """
     with patch("sys.argv", ["python -m pyzm.train"] + argv):
         with patch("pyzm.train.__main__._run_headless") as mock_hl:
             with patch("pyzm.train.__main__._run_ui") as mock_ui:
-                main()
-                if mock_hl.called:
-                    return mock_hl.call_args[0][0]
-                return mock_ui.call_args[0][0]
+                with patch("pyzm.train.__main__._run_correct") as mock_cr:
+                    main()
+                    if mock_cr.called:
+                        return mock_cr.call_args[0][0]
+                    if mock_hl.called:
+                        return mock_hl.call_args[0][0]
+                    return mock_ui.call_args[0][0]
 
 
 # ---------------------------------------------------------------------------
@@ -221,3 +224,90 @@ class TestRunUI:
         cmd = mock_call.call_args[0][0]
         assert "--workspace-dir" in cmd
         assert "/custom/ws" in cmd
+
+
+# ---------------------------------------------------------------------------
+# --correct flag
+# ---------------------------------------------------------------------------
+
+class TestCorrectFlag:
+    def test_correct_flag_parsed(self):
+        """--correct flag is parsed correctly."""
+        args = _parse_args(["--correct", "/path/to/images"])
+        assert args.correct == "/path/to/images"
+        assert args.dataset is None
+
+    def test_correct_triggers_run_correct(self):
+        """--correct triggers _run_correct dispatch."""
+        with patch("sys.argv", ["prog", "--correct", "/some/folder"]):
+            with patch("pyzm.train.__main__._run_correct") as mock_cr:
+                with patch("pyzm.train.__main__._run_headless") as mock_hl:
+                    with patch("pyzm.train.__main__._run_ui") as mock_ui:
+                        main()
+
+        mock_cr.assert_called_once()
+        mock_hl.assert_not_called()
+        mock_ui.assert_not_called()
+        assert mock_cr.call_args[0][0].correct == "/some/folder"
+
+    def test_correct_takes_priority_over_dataset(self):
+        """When both --correct and dataset are given, --correct wins."""
+        args = _parse_args(["my_dataset", "--correct", "/path/to/images"])
+        # --correct was used to dispatch, so args.correct is set
+        assert args.correct == "/path/to/images"
+
+
+class TestRunCorrect:
+    def test_calls_run_correct_pipeline(self):
+        """_run_correct forwards parsed args to run_correct_pipeline."""
+        args = argparse.Namespace(
+            correct="/path/to/images",
+            model="yolo11s",
+            epochs=50,
+            batch=None,
+            imgsz=640,
+            val_ratio=0.2,
+            output=None,
+            project_name=None,
+            device="auto",
+            workspace_dir=None,
+            base_path="/models",
+            processor="gpu",
+            min_confidence=0.3,
+        )
+
+        with patch("pyzm.train.pipeline.run_correct_pipeline") as mock_rcp:
+            _run_correct(args)
+
+        mock_rcp.assert_called_once()
+        call_kwargs = mock_rcp.call_args
+        assert str(call_kwargs[0][0]) == "/path/to/images"
+        assert call_kwargs[1]["epochs"] == 50
+        assert call_kwargs[1]["base_path"] == "/models"
+        assert call_kwargs[1]["min_confidence"] == 0.3
+
+    def test_pipeline_error_exits(self):
+        """_run_correct exits with code 1 on pipeline error."""
+        args = argparse.Namespace(
+            correct="/nonexistent",
+            model="yolo11s",
+            epochs=50,
+            batch=None,
+            imgsz=640,
+            val_ratio=0.2,
+            output=None,
+            project_name=None,
+            device="auto",
+            workspace_dir=None,
+            base_path="/models",
+            processor="gpu",
+            min_confidence=0.3,
+        )
+
+        with patch(
+            "pyzm.train.pipeline.run_correct_pipeline",
+            side_effect=FileNotFoundError("no folder"),
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                _run_correct(args)
+            assert exc_info.value.code == 1

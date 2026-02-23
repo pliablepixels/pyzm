@@ -20,7 +20,25 @@ def main() -> None:
         help="Path to YOLO dataset folder (headless mode). Omit to launch the UI.",
     )
 
+    # Correct-model mode: batch detect + auto-approve + retrain
+    ap.add_argument(
+        "--correct",
+        default=None,
+        metavar="FOLDER",
+        help=(
+            "Correct-model workflow: point at a folder of images where the "
+            "model is wrong, run detection, auto-approve, and retrain with "
+            "mode=refine.  No data.yaml needed."
+        ),
+    )
+
     # --- Headless flags ---
+    ap.add_argument(
+        "--min-confidence",
+        type=float,
+        default=0.3,
+        help="Min confidence threshold for auto-detection (default: 0.3)",
+    )
     ap.add_argument(
         "--model",
         default="yolo11s",
@@ -115,7 +133,9 @@ def main() -> None:
 
     args = ap.parse_args()
 
-    if args.dataset:
+    if args.correct:
+        _run_correct(args)
+    elif args.dataset:
         _run_headless(args)
     else:
         _run_ui(args)
@@ -143,6 +163,35 @@ def _run_headless(args: argparse.Namespace) -> None:
             device=args.device,
             max_per_class=args.max_per_class,
             mode=args.mode,
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _run_correct(args: argparse.Namespace) -> None:
+    from pathlib import Path
+
+    from pyzm.train.pipeline import run_correct_pipeline
+
+    output = Path(args.output) if args.output else None
+    workspace = Path(args.workspace_dir) if args.workspace_dir else None
+
+    try:
+        run_correct_pipeline(
+            Path(args.correct),
+            project_name=args.project_name,
+            workspace_dir=workspace,
+            model=args.model,
+            epochs=args.epochs,
+            batch=args.batch,
+            imgsz=args.imgsz,
+            val_ratio=args.val_ratio,
+            output=output,
+            device=args.device,
+            base_path=args.base_path,
+            processor=args.processor,
+            min_confidence=args.min_confidence,
         )
     except (ValueError, FileNotFoundError) as exc:
         print(f"Error: {exc}", file=sys.stderr)

@@ -146,10 +146,16 @@ def _resolve_model_name(
     """Resolve a model name string against a base directory.
 
     Search order:
+    0. Absolute path to a weight file (e.g. ``/path/to/best.onnx``)
     1. Directory named *name* containing model files
     2. Any weight file whose stem matches *name* in any subdirectory
     3. Fall back to a bare ModelConfig with just the name and processor
     """
+    # 0. Absolute path to a weight file
+    abs_path = Path(name)
+    if abs_path.is_absolute() and abs_path.is_file() and abs_path.suffix.lower() in _WEIGHT_EXTS:
+        return _model_config_from_file(abs_path, abs_path.parent, processor)
+
     # 1. Direct directory match: e.g. "yolo11" -> base_path/yolo11/
     candidate_dir = base_path / name
     if candidate_dir.is_dir():

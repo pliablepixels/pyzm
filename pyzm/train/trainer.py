@@ -604,40 +604,95 @@ class YOLOTrainer:
     # Evaluation
     # ------------------------------------------------------------------
 
-    def evaluate(self, image: "Any") -> list[dict]:
+    def evaluate(
+        self,
+        image: "Any",
+        processor: str = "gpu",
+        min_confidence: float = 0.3,
+    ) -> list[dict]:
         """Run the fine-tuned model on a single image.
+
+        Uses :class:`pyzm.ml.detector.Detector` with the ONNX model when
+        available, matching the production inference path used by
+        ``zm_detect.py``.  Falls back to ``best.pt`` via Ultralytics if
+        ONNX hasn't been exported yet.
 
         Parameters
         ----------
         image:
-            Image path (str) or numpy array.
+            BGR numpy array.
+        processor:
+            ``"gpu"`` or ``"cpu"``.
+        min_confidence:
+            Minimum confidence threshold (0.0–1.0).  Detections below this
+            are discarded.
 
         Returns
         -------
         List of dicts with keys: label, confidence, bbox (x1,y1,x2,y2).
         """
-        if self._model is None:
-            # Try loading best.pt from project
-            best = self.project_dir / "runs" / "train" / "weights" / "best.pt"
-            if best.exists():
-                from ultralytics import YOLO
-                self._model = YOLO(str(best))
-            else:
-                raise FileNotFoundError("No trained model found. Run training first.")
+        weights_dir = self.project_dir / "runs" / "train" / "weights"
+        best_onnx = weights_dir / "best.onnx"
+        best_pt = weights_dir / "best.pt"
 
-        results = self._model(image, verbose=False)
-        detections: list[dict] = []
-        for r in results:
-            for box in r.boxes:
-                x1, y1, x2, y2 = box.xyxy[0].tolist()
-                cls_id = int(box.cls[0])
-                conf = float(box.conf[0])
-                label = r.names[cls_id] if cls_id in r.names else str(cls_id)
+        # Prefer ONNX via pyzm.ml.detector (matches production path)
+        if best_onnx.exists():
+            logger.info(
+                "Evaluate: using pyzm Detector with %s (min_confidence=%.0f%%)",
+                best_onnx, min_confidence * 100,
+            )
+            from pyzm.ml.detector import Detector
+            from pyzm.models.config import ModelConfig, ModelFramework, Processor as Proc
+
+            mc = ModelConfig(
+                name=best_onnx.stem,
+                framework=ModelFramework.OPENCV,
+                processor=Proc(processor),
+                weights=str(best_onnx),
+                min_confidence=min_confidence,
+            )
+            det = Detector(models=[mc])
+            result = det.detect(image)
+            detections: list[dict] = []
+            for d in result.detections:
+                b = d.bbox
                 detections.append({
-                    "label": label,
-                    "confidence": conf,
-                    "bbox": [int(x1), int(y1), int(x2), int(y2)],
+                    "label": d.label,
+                    "confidence": float(getattr(d, "confidence", 0.0)),
+                    "bbox": [int(b.x1), int(b.y1), int(b.x2), int(b.y2)],
                 })
+        elif best_pt.exists():
+            # Fallback: load .pt directly via Ultralytics
+            logger.info(
+                "Evaluate: ONNX not found, falling back to %s (min_confidence=%.0f%%)",
+                best_pt, min_confidence * 100,
+            )
+            if self._model is None:
+                from ultralytics import YOLO
+                self._model = YOLO(str(best_pt))
+            results = self._model(image, verbose=False, conf=min_confidence)
+            detections = []
+            for r in results:
+                for box in r.boxes:
+                    x1, y1, x2, y2 = box.xyxy[0].tolist()
+                    cls_id = int(box.cls[0])
+                    conf = float(box.conf[0])
+                    label = r.names[cls_id] if cls_id in r.names else str(cls_id)
+                    detections.append({
+                        "label": label,
+                        "confidence": conf,
+                        "bbox": [int(x1), int(y1), int(x2), int(y2)],
+                    })
+        else:
+            raise FileNotFoundError("No trained model found. Run training first.")
+
+        if detections:
+            summary = ", ".join(
+                f"{d['label']}:{d['confidence']:.0%}" for d in detections
+            )
+            logger.info("Evaluate: %d detection(s): %s", len(detections), summary)
+        else:
+            logger.info("Evaluate: no detections")
         return detections
 
     # ------------------------------------------------------------------

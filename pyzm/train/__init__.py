@@ -16,17 +16,21 @@ Run (headless)::
 
     python -m pyzm.train /path/to/yolo-dataset
 
+Correct model (headless)::
+
+    python -m pyzm.train --correct /path/to/images
+
 Programmatic::
 
-    from pyzm.train import run_pipeline
+    from pyzm.train import run_pipeline, run_correct_pipeline
     result = run_pipeline(Path("/path/to/yolo-dataset"), epochs=50)
 """
 
 from __future__ import annotations
 
-from pyzm.train.pipeline import run_pipeline
+from pyzm.train.pipeline import run_correct_pipeline, run_pipeline
 
-__all__: list[str] = ["run_pipeline"]
+__all__: list[str] = ["run_pipeline", "run_correct_pipeline"]
 
 
 def check_dependencies() -> None:
