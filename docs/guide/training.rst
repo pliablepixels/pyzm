@@ -155,6 +155,31 @@ CLI options (headless mode):
    Override the project storage directory.
    Default: ``~/.pyzm/training``
 
+Correct Model (headless)
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+For the common case where you have images the model gets wrong, the
+``--correct`` flag runs the full correct-and-retrain workflow in one command:
+
+.. code-block:: bash
+
+   /opt/zoneminder/venv/bin/python -m pyzm.train --correct /path/to/images
+
+This scans the folder for images, runs the current model on each one,
+auto-approves all detections, and retrains with ``mode=refine``.  No
+``data.yaml`` is needed — just a folder of images.
+
+You can combine ``--correct`` with most of the standard flags:
+
+.. code-block:: bash
+
+   /opt/zoneminder/venv/bin/python -m pyzm.train --correct /path/to/images \
+       --model yolo11s \
+       --epochs 100 \
+       --batch 8 \
+       --base-path /var/lib/zmeventnotification/models \
+       --processor gpu
+
 Programmatic usage:
 
 .. code-block:: python
@@ -179,21 +204,22 @@ The training UI has three phases:
 1. Select Images
 ^^^^^^^^^^^^^^^^
 
-Import training images from one of three sources:
+Import training images using one of two modes:
 
-- **Pre-Annotated YOLO Dataset** -- import an existing dataset in YOLO format
-  (e.g. from Roboflow). The UI reads the ``data.yaml`` and imports images with
-  their annotations already attached. You can optionally filter out classes you
-  don't need using the **Classes to ignore** selector — annotations for ignored
-  classes are skipped and class IDs are remapped automatically.
+- **Manually annotate** -- upload images or point at a server folder. Toggle
+  **Auto-detect objects at import** to have the model pre-detect objects,
+  giving you a starting point to correct. You can also run detection later
+  from the Review phase using the "Detect all" button. Either way, you
+  review every image: approve correct detections, delete false positives,
+  rename mislabeled objects, reshape inaccurate boxes, and draw boxes for
+  objects the model missed.
 
-- **Raw Images** -- upload unannotated images (JPG, PNG, etc.). The base model
-  runs auto-detection on each image, giving you a starting point to correct.
-
-- **ZoneMinder Events** -- connect to your ZM instance, browse monitors and
-  events, and import frames directly. This is the most natural workflow for
-  fixing detection problems: find an event where the model failed, import the
-  frame, and correct the labels.
+- **Import pre-annotated dataset** -- import a pre-annotated dataset in YOLO
+  format (e.g. from Roboflow). The UI reads the ``data.yaml`` and imports
+  images with their annotations already attached. You can optionally filter
+  out classes you don't need using the **Classes to ignore** selector —
+  annotations for ignored classes are skipped and class IDs are remapped
+  automatically.
 
 This phase is organized into three collapsible sub-steps — **Select path**,
 **Import images**, and **Review images** — each showing a green checkmark when
@@ -255,6 +281,75 @@ After training completes:
   training curves, confusion matrix, F1/PR curves, and validation samples
 - **Test image** -- upload an image to verify the fine-tuned model's
   detections before deploying
+
+Annotation Strategy
+-------------------
+
+Choosing which detections to keep during the Review phase depends on your
+fine-tuning mode and how you plan to deploy the model.
+
+What to Label (New Class Mode)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When teaching the model a completely new object (e.g. package, gun, knife):
+
+- Label **only** your new class.
+- **Remove** detections for classes the base model already knows (person, car,
+  dog, etc.). The base model was trained on millions of images and will always
+  outperform a model fine-tuned on 20–500 images for those classes.
+- The Review UI shows bulk **"Delete all"** buttons for known-class detections
+  to make this quick.
+
+What to Label (Refine Mode)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When correcting the model's mistakes on classes it already knows:
+
+- Label **all** classes — you're improving the model's existing knowledge.
+- Approve correct detections, fix wrong ones (rename, reshape, delete false
+  positives).
+
+Background Images
+^^^^^^^^^^^^^^^^^
+
+Images where all detections are deleted become **negative/background** examples.
+These teach the model "nothing is here" — useful for reducing false positives.
+A few background images are helpful but shouldn't dominate the dataset.
+
+Production Deployment
+^^^^^^^^^^^^^^^^^^^^^
+
+The fine-tuned model only detects the classes you trained it on. To get full
+coverage, run both models in your ``objectconfig.yml``:
+
+.. code-block:: yaml
+
+   models:
+     - name: base
+       type: object
+       framework: opencv
+       weights: /path/to/yolo11s.onnx
+
+     - name: custom
+       type: object
+       framework: opencv
+       weights: /path/to/my_finetune.onnx
+
+   same_model_sequence_strategy: union
+
+The base model handles standard objects; the fine-tuned model adds your custom
+class. The ``union`` strategy merges detections from both models.
+
+How Many Images?
+^^^^^^^^^^^^^^^^
+
+- **10–50 images**: Good starting point. Label only new classes. Remove
+  known-class detections.
+- **50–200 images**: Solid results for new classes. Still remove known-class
+  detections.
+- **200–500 images**: Strong model. Known-class detections won't help much.
+- **500+ images**: Large dataset. Could theoretically keep known classes, but
+  the union strategy is simpler and more effective.
 
 Projects
 --------
@@ -377,9 +472,10 @@ Tips
 
 - **Start small** -- 10-20 images per class is enough for a first pass. You
   can always add more and retrain.
-- **Use ZM events** -- importing frames from events where detection failed is
-  the most effective way to improve accuracy for your specific camera angles
-  and lighting.
+- **Import with auto-detect** -- enable "Auto-detect objects at import" and
+  point at images where your model is wrong. Fix the mistakes, then retrain.
+  This is the fastest way to improve accuracy for your specific cameras and
+  lighting conditions.
 - **Check the confusion matrix** -- it shows which classes the model confuses
   with each other, helping you decide where to add more data.
 - **Watch for overfitting** -- if the best model epoch is early in training
