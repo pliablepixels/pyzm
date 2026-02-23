@@ -138,6 +138,50 @@ class TrainResult:
         )
 
 
+def adaptive_finetune_params(n_images: int) -> dict[str, object]:
+    """Return dataset-size-appropriate training hyperparameters.
+
+    Smaller datasets need more aggressive regularisation (frozen backbone,
+    lower learning rate, cosine schedule) to avoid overfitting.
+
+    Parameters
+    ----------
+    n_images:
+        Total number of training images.
+
+    Returns
+    -------
+    Dict with keys: ``freeze``, ``lr0``, ``patience``, ``cos_lr``,
+    ``val_ratio``, ``tier`` (informational label).
+    """
+    if n_images < 200:
+        return {
+            "freeze": 10,
+            "lr0": 0.001,
+            "patience": 15,
+            "cos_lr": True,
+            "val_ratio": 0.15,
+            "tier": "small",
+        }
+    if n_images < 1000:
+        return {
+            "freeze": 5,
+            "lr0": 0.005,
+            "patience": 30,
+            "cos_lr": True,
+            "val_ratio": 0.2,
+            "tier": "medium",
+        }
+    return {
+        "freeze": 0,
+        "lr0": 0.01,
+        "patience": 50,
+        "cos_lr": False,
+        "val_ratio": 0.2,
+        "tier": "large",
+    }
+
+
 class YOLOTrainer:
     """Wraps Ultralytics YOLO for fine-tuning.
 
@@ -263,6 +307,7 @@ class YOLOTrainer:
         imgsz: int = 640,
         resume: bool = False,
         progress_callback: Callable[[TrainProgress], None] | None = None,
+        **extra_kwargs: Any,
     ) -> TrainResult:
         """Run fine-tuning.
 
@@ -392,6 +437,7 @@ class YOLOTrainer:
             )
             if resume_training:
                 train_kwargs["resume"] = True
+            train_kwargs.update(extra_kwargs)
             results = model.train(**train_kwargs)
         except KeyboardInterrupt:
             logger.info("Training stopped by user")

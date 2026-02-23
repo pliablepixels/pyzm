@@ -14,7 +14,13 @@ from PIL import Image
 
 from pyzm.train.app import MIN_IMAGES_PER_CLASS, _section_header
 from pyzm.train.dataset import YOLODataset
-from pyzm.train.trainer import HardwareInfo, TrainProgress, TrainResult, YOLOTrainer
+from pyzm.train.trainer import (
+    HardwareInfo,
+    TrainProgress,
+    TrainResult,
+    YOLOTrainer,
+    adaptive_finetune_params,
+)
 from pyzm.train.verification import VerificationStore
 
 logger = logging.getLogger("pyzm.train")
@@ -77,6 +83,14 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
     with col4:
         st.caption(hw.display)
 
+    adaptive = adaptive_finetune_params(len(images))
+    st.caption(
+        f":material/tune: Adaptive fine-tuning ({adaptive['tier']} dataset, "
+        f"{len(images)} images): freeze={adaptive['freeze']}, "
+        f"lr0={adaptive['lr0']}, patience={adaptive['patience']}, "
+        f"cos_lr={adaptive['cos_lr']}, val_ratio={adaptive['val_ratio']}"
+    )
+
     # Shared mutable dict — background thread mutates contents,
     # main thread reads.  Lives in session_state so it survives reruns.
     shared: dict = st.session_state.get("_train_shared", {})
@@ -125,6 +139,7 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
                 ),
                 "result": None,
                 "log": [],
+                "adaptive": adaptive,
             }
             import time as _time
             shared["start_time"] = _time.time()
@@ -164,7 +179,7 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
                         total_epochs=epochs,
                         message="Splitting into train/val...",
                     )
-                    ds.split()
+                    ds.split(_s["adaptive"]["val_ratio"])
 
                 _s["progress"] = TrainProgress(
                     total_epochs=epochs, message="Loading model...",
@@ -207,9 +222,14 @@ def _phase_train(ds: YOLODataset, store: VerificationStore, args: argparse.Names
                 sys.stdout = _StreamCapture(old_stdout)
                 sys.stderr = _StreamCapture(old_stderr)
                 try:
+                    _adapt = _s["adaptive"]
+                    _train_extra = {
+                        k: _adapt[k] for k in ("freeze", "lr0", "patience", "cos_lr")
+                    }
                     r = trainer.train(
                         dataset_yaml=yaml_path, epochs=epochs,
                         batch=batch, imgsz=imgsz, progress_callback=_cb,
+                        **_train_extra,
                     )
                     _s["result"] = r
                 except Exception as exc:

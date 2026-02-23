@@ -7,7 +7,72 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from pyzm.train.trainer import ClassMetrics, HardwareInfo, TrainProgress, TrainResult, YOLOTrainer
+from pyzm.train.trainer import (
+    ClassMetrics,
+    HardwareInfo,
+    TrainProgress,
+    TrainResult,
+    YOLOTrainer,
+    adaptive_finetune_params,
+)
+
+
+# ---------------------------------------------------------------------------
+# adaptive_finetune_params
+# ---------------------------------------------------------------------------
+
+class TestAdaptiveFinetuneParams:
+    """Test dataset-size-adaptive hyperparameter selection."""
+
+    _EXPECTED_KEYS = {"freeze", "lr0", "patience", "cos_lr", "val_ratio", "tier"}
+
+    def test_expected_keys(self):
+        result = adaptive_finetune_params(100)
+        assert set(result.keys()) == self._EXPECTED_KEYS
+
+    def test_small_tier(self):
+        p = adaptive_finetune_params(50)
+        assert p["tier"] == "small"
+        assert p["freeze"] == 10
+        assert p["lr0"] == pytest.approx(0.001)
+        assert p["patience"] == 15
+        assert p["cos_lr"] is True
+        assert p["val_ratio"] == pytest.approx(0.15)
+
+    def test_medium_tier(self):
+        p = adaptive_finetune_params(500)
+        assert p["tier"] == "medium"
+        assert p["freeze"] == 5
+        assert p["lr0"] == pytest.approx(0.005)
+        assert p["patience"] == 30
+        assert p["cos_lr"] is True
+        assert p["val_ratio"] == pytest.approx(0.2)
+
+    def test_large_tier(self):
+        p = adaptive_finetune_params(2000)
+        assert p["tier"] == "large"
+        assert p["freeze"] == 0
+        assert p["lr0"] == pytest.approx(0.01)
+        assert p["patience"] == 50
+        assert p["cos_lr"] is False
+        assert p["val_ratio"] == pytest.approx(0.2)
+
+    def test_boundary_199_is_small(self):
+        assert adaptive_finetune_params(199)["tier"] == "small"
+
+    def test_boundary_200_is_medium(self):
+        assert adaptive_finetune_params(200)["tier"] == "medium"
+
+    def test_boundary_999_is_medium(self):
+        assert adaptive_finetune_params(999)["tier"] == "medium"
+
+    def test_boundary_1000_is_large(self):
+        assert adaptive_finetune_params(1000)["tier"] == "large"
+
+    def test_minimal_dataset(self):
+        p = adaptive_finetune_params(1)
+        assert p["tier"] == "small"
+        assert p["freeze"] == 10
 
 
 # ---------------------------------------------------------------------------

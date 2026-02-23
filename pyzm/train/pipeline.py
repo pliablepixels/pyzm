@@ -8,7 +8,7 @@ from pathlib import Path
 
 from pyzm.train.dataset import YOLODataset
 from pyzm.train.local_import import import_local_dataset, validate_yolo_folder
-from pyzm.train.trainer import TrainResult, YOLOTrainer
+from pyzm.train.trainer import TrainResult, YOLOTrainer, adaptive_finetune_params
 from pyzm.train.verification import VerificationStore
 
 logger = logging.getLogger("pyzm.train")
@@ -98,9 +98,18 @@ def run_pipeline(
     )
     print(f"  {img_count} images, {det_count} annotations")
 
+    # --- Adaptive hyperparameters -------------------------------------------
+    adaptive = adaptive_finetune_params(img_count)
+    print(f"Adaptive fine-tuning ({adaptive['tier']} dataset, {img_count} images): "
+          f"freeze={adaptive['freeze']}, lr0={adaptive['lr0']}, "
+          f"patience={adaptive['patience']}, cos_lr={adaptive['cos_lr']}, "
+          f"val_ratio={adaptive['val_ratio']}")
+
     # --- 3. Split + YAML ----------------------------------------------------
-    print(f"Splitting dataset (val_ratio={val_ratio})...")
-    ds.split(val_ratio)
+    # Respect explicit CLI --val-ratio; otherwise use adaptive value
+    effective_val_ratio = val_ratio if val_ratio != 0.2 else adaptive["val_ratio"]
+    print(f"Splitting dataset (val_ratio={effective_val_ratio})...")
+    ds.split(effective_val_ratio)
     yaml_path = ds.generate_yaml()
     print(f"  Dataset YAML: {yaml_path}")
 
@@ -109,6 +118,7 @@ def run_pipeline(
     effective_batch = batch if batch is not None else hw.suggested_batch
     effective_device = device if device != "auto" else hw.device
 
+    train_extra = {k: adaptive[k] for k in ("freeze", "lr0", "patience", "cos_lr")}
     print(f"Training: model={model}, epochs={epochs}, batch={effective_batch}, "
           f"imgsz={imgsz}, device={effective_device}")
 
@@ -118,6 +128,7 @@ def run_pipeline(
         epochs=epochs,
         batch=effective_batch,
         imgsz=imgsz,
+        **train_extra,
     )
 
     # --- 5. Export -----------------------------------------------------------
