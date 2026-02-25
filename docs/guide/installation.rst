@@ -29,7 +29,8 @@ Requirements
 Path A: Install from PyPI
 --------------------------
 
-The simplest path — no need to clone the repo.
+The simplest path — no need to clone the repo. Do **NOT** use this path if you have installed ``opencv-python`` from source
+as it will overwrite it. Use the build from source path as we have guardrails to preserve your existing ``opencv-python``
 
 **1. Create the venv** (skip if it already exists, e.g. from zmeventnotification's
 installer):
