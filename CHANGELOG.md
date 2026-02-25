@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 
 
+## [2.1.8] - 2026-02-25
+
+### Bug Fixes
+
+- include logo in package for non-editable installs ([36d700d](https://github.com/pliablepixels/pyzm/commit/36d700d96cd6f44f57d0f8ca94b4702f2a002d97))
+
+### Documentation
+
+- clarified not to use pypi for custom opencv installs ([54b3166](https://github.com/pliablepixels/pyzm/commit/54b31661d7df22d4373643ac6cce54f20b0a172f))
+
+### Miscellaneous
+
+- bump version to v2.1.8 ([02e9467](https://github.com/pliablepixels/pyzm/commit/02e94673bf231fc9e340c85d5689a0266580eff3))
+
 ## [2.1.7] - 2026-02-23
 
 ### Bug Fixes
@@ -11,6 +25,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- update CHANGELOG for v2.1.7 ([90dce2e](https://github.com/pliablepixels/pyzm/commit/90dce2e20c68bac86408a46e842c79fcf6418600))
 - fix training guide discrepancies with codebase ([6a0e64b](https://github.com/pliablepixels/pyzm/commit/6a0e64b8a22dd760e95783e1854835c64333635d))
 - update training guide for annotation strategy and --correct workflow ([2f26b23](https://github.com/pliablepixels/pyzm/commit/2f26b23fd5e54c5ebec1fd7a09ad3fee2fe0890d))
 - update training guide for mode-based augmentation and UI changes ([618e44d](https://github.com/pliablepixels/pyzm/commit/618e44d7ec1d08a0aff4e58691de18c9edd77b70))
