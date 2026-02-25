@@ -53,7 +53,7 @@ logger = logging.getLogger("pyzm.train")
 DEFAULT_BASE_PATH = "/var/lib/zmeventnotification/models"
 PROJECTS_ROOT = Path.home() / ".pyzm" / "training"
 MIN_IMAGES_PER_CLASS = 10
-_LOGO_PATH = Path(__file__).resolve().parents[2] / "logo" / "pyzm.png"
+_LOGO_PATH = Path(__file__).resolve().parent / "assets" / "pyzm.png"
 
 _COLOR_PALETTE = [
     "#27AE60", "#8E44AD", "#0081FE", "#FE3C71",

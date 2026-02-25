@@ -94,6 +94,7 @@ setup(name = NAME,
               'st-clickable-images>=0.0.3',
           ],
       },
+      package_data={'pyzm': ['train/assets/*.png']},
       packages=find_packages(exclude=["tests", "tests.*"]),
       )
 
