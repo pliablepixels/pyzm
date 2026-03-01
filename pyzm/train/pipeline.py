@@ -63,7 +63,7 @@ def run_pipeline(
     Parameters
     ----------
     dataset_path:
-        Path to a YOLO dataset folder (must contain ``data.yaml``).
+        Path to a YOLO dataset folder (must contain ``data.yaml`` or ``data.yml``).
     project_name:
         Name for the training project. Defaults to the dataset folder name.
     workspace_dir:

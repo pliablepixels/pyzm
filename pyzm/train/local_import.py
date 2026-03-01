@@ -282,7 +282,9 @@ def validate_yolo_folder(folder: Path) -> dict | str:
 
     yaml_path = folder / "data.yaml"
     if not yaml_path.exists():
-        return f"Missing data.yaml in {folder}"
+        yaml_path = folder / "data.yml"
+    if not yaml_path.exists():
+        return f"Missing data.yaml (or data.yml) in {folder}"
 
     try:
         data = yaml.safe_load(yaml_path.read_text())
@@ -564,7 +566,7 @@ def local_dataset_panel(
         "Path to YOLO dataset folder",
         placeholder="/path/to/my_dataset",
         help=(
-            "Folder must contain data.yaml plus images/ and labels/ dirs. "
+            "Folder must contain data.yaml (or data.yml) plus images/ and labels/ dirs. "
             "Standard (images/ + labels/) and Roboflow-style split "
             "(train/images/ + train/labels/, etc.) layouts are supported."
         ),
@@ -577,7 +579,7 @@ def local_dataset_panel(
             "Enter the path to a folder in standard YOLO format:\n"
             "```\n"
             "my_dataset/\n"
-            "  data.yaml\n"
+            "  data.yaml (or data.yml)\n"
             "  images/\n"
             "  labels/\n"
             "```"

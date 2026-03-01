@@ -65,7 +65,7 @@ class TestRunPipeline:
         folder = tmp_path / "empty_ds"
         folder.mkdir()
 
-        with pytest.raises(ValueError, match="Missing data.yaml"):
+        with pytest.raises(ValueError, match="Missing data\\.yaml"):
             run_pipeline(folder, workspace_dir=tmp_path / "ws")
 
     def test_rejects_nonexistent_path(self, tmp_path):

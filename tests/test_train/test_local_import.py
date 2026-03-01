@@ -129,6 +129,17 @@ class TestValidateYoloFolder:
         assert isinstance(result, str)
         assert "Missing data.yaml" in result
 
+    def test_data_yml_accepted(self, tmp_path):
+        """data.yml is accepted as an alternative to data.yaml."""
+        folder = tmp_path / "yml_ds"
+        folder.mkdir()
+        (folder / "data.yml").write_text("names:\n  - person\n  - car\n")
+        (folder / "images").mkdir()
+        (folder / "labels").mkdir()
+        result = validate_yolo_folder(folder)
+        assert isinstance(result, dict)
+        assert result["names"] == {0: "person", 1: "car"}
+
     def test_missing_names_key(self, tmp_path):
         folder = tmp_path / "no_names"
         folder.mkdir()
