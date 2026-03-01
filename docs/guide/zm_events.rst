@@ -57,7 +57,14 @@ Event methods
    path = ev.path()
    # e.g. "/var/cache/zoneminder/events/1/2024-01-15/12345"
 
-``tag()`` and ``path()`` require a direct database connection.  By
+   # Save detection artifacts to the event directory
+   annotated = result.annotate()
+   ev.save_objdetect(annotated, result.to_dict())
+   # Writes objdetect.jpg and objects.json to ev.path()
+   # Use path_override="..." to write to a different directory
+
+``tag()``, ``path()``, and ``save_objdetect()`` (when no
+``path_override`` is given) require a direct database connection.  By
 default, credentials are read from ``/etc/zm/zm.conf``.  If that file is
 not readable, pass ``db_user``, ``db_password``, etc. when creating the
 client — see :doc:`zm_client` for details.

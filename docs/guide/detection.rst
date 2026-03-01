@@ -871,6 +871,47 @@ the model but subsequently filtered out (wrong zone, wrong pattern, too
 large, etc.). These are drawn in red (unfilled) by ``annotate()`` so you
 can see what was rejected.
 
+``annotate()`` accepts keyword-only arguments to control drawing:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 15 60
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``polygons``
+     - ``None``
+     - List of zone polygon dicts to draw. Each dict must have a
+       ``'value'`` key containing ``(x, y)`` coordinate pairs.
+   * - ``write_conf``
+     - ``True``
+     - Append confidence percentages to labels (e.g. ``person 97%``).
+       Set to ``False`` to show labels only.
+   * - ``poly_color``
+     - ``(255, 255, 255)``
+     - BGR colour for polygon outlines.
+   * - ``poly_thickness``
+     - ``1``
+     - Line thickness for polygon outlines.
+   * - ``draw_error_boxes``
+     - ``True``
+     - Draw red rectangles for filtered-out detections. Set to ``False``
+       to omit them.
+
+Example with zone polygons and no confidence text:
+
+.. code-block:: python
+
+   polygons = [{"name": "yard", "value": [(0,0), (640,0), (640,480), (0,480)]}]
+   annotated = result.annotate(
+       polygons=polygons,
+       write_conf=False,
+       poly_color=(0, 255, 0),
+       poly_thickness=2,
+   )
+   cv2.imwrite("/tmp/annotated.jpg", annotated)
+
 Detection
 ~~~~~~~~~~
 
