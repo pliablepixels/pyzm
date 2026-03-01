@@ -408,6 +408,54 @@ class ZMClient:
         conn.commit()
         cur.close()
 
+    def _save_objdetect(
+        self,
+        event: Event,
+        image: Any,
+        metadata: dict,
+        path_override: str | None = None,
+    ) -> str | None:
+        """Write ``objdetect.jpg`` and ``objects.json`` for an event.
+
+        Parameters
+        ----------
+        event:
+            The :class:`Event` whose directory will be used.
+        image:
+            A NumPy image array (BGR, as from OpenCV).
+        metadata:
+            Detection data dict.  The standard keys ``labels``, ``boxes``,
+            ``frame_id``, ``confidences``, and ``image_dimensions`` are
+            extracted and serialised.
+        path_override:
+            If given, write to this directory instead of ``event.path()``.
+
+        Returns the directory path written to, or ``None`` if no path was
+        available.
+        """
+        import json as _json
+
+        import cv2 as _cv2
+
+        eventpath = path_override or self._event_path(event.id)
+        if not eventpath:
+            logger.debug("No event path available, skipping save_objdetect")
+            return None
+
+        os.makedirs(eventpath, exist_ok=True)
+
+        objdetect_path = os.path.join(eventpath, "objdetect.jpg")
+        _cv2.imwrite(objdetect_path, image)
+        logger.debug("Wrote objdetect image to %s", objdetect_path)
+
+        keys = ("labels", "boxes", "frame_id", "confidences", "image_dimensions")
+        obj_json = {k: metadata[k] for k in keys if k in metadata}
+        json_path = os.path.join(eventpath, "objects.json")
+        with open(json_path, "w") as f:
+            _json.dump(obj_json, f)
+
+        return eventpath
+
     def _event_path(self, event_id: int) -> str | None:
         """Construct the filesystem path for an event."""
         from datetime import datetime as _dt

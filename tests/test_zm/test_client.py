@@ -1399,6 +1399,92 @@ class TestEventPath:
 
 
 # ===================================================================
+# TestSaveObjdetect
+# ===================================================================
+
+class TestSaveObjdetect:
+    """Tests for Event.save_objdetect() file writing."""
+
+    @patch("pyzm.client.ZMAPI")
+    def test_writes_objdetect_files(self, mock_zmapi_cls, tmp_path):
+        """save_objdetect writes objdetect.jpg and objects.json."""
+        import json
+        import numpy as np
+
+        mock_api = _make_mock_api()
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm import ZMClient
+        client = ZMClient(api_url="https://zm.example.com/zm/api")
+
+        ev = Event(id=100, _client=client)
+        image = np.zeros((10, 10, 3), dtype=np.uint8)
+        metadata = {
+            "labels": ["person"],
+            "boxes": [[10, 20, 50, 80]],
+            "frame_id": "snapshot",
+            "confidences": [0.97],
+            "image_dimensions": {"original": (480, 640)},
+        }
+
+        eventpath = str(tmp_path / "events" / "100")
+        result = ev.save_objdetect(image, metadata, path_override=eventpath)
+
+        assert result == eventpath
+        assert (tmp_path / "events" / "100" / "objdetect.jpg").exists()
+        json_path = tmp_path / "events" / "100" / "objects.json"
+        assert json_path.exists()
+        data = json.loads(json_path.read_text())
+        assert data["labels"] == ["person"]
+        assert data["frame_id"] == "snapshot"
+        assert data["confidences"] == [0.97]
+
+    @patch("pyzm.client.ZMAPI")
+    def test_returns_none_when_no_path(self, mock_zmapi_cls):
+        """save_objdetect returns None when no path is available."""
+        mock_api = _make_mock_api()
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm import ZMClient
+        client = ZMClient(api_url="https://zm.example.com/zm/api")
+        client._event_path = MagicMock(return_value=None)
+
+        ev = Event(id=100, _client=client)
+        result = ev.save_objdetect(MagicMock(), {})
+        assert result is None
+
+    @patch("pyzm.client.ZMAPI")
+    def test_uses_event_path_when_no_override(self, mock_zmapi_cls, tmp_path):
+        """save_objdetect uses event.path() when no path_override given."""
+        import numpy as np
+
+        mock_api = _make_mock_api()
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm import ZMClient
+        client = ZMClient(api_url="https://zm.example.com/zm/api")
+        eventpath = str(tmp_path / "auto_path")
+        client._event_path = MagicMock(return_value=eventpath)
+
+        ev = Event(id=200, _client=client)
+        image = np.zeros((5, 5, 3), dtype=np.uint8)
+        metadata = {"labels": ["car"], "boxes": [[0, 0, 10, 10]],
+                     "frame_id": 5, "confidences": [0.9],
+                     "image_dimensions": {}}
+
+        result = ev.save_objdetect(image, metadata)
+
+        assert result == eventpath
+        client._event_path.assert_called_once_with(200)
+
+    def test_requires_client(self):
+        """save_objdetect raises when Event has no client."""
+        ev = Event(id=1)
+        with pytest.raises(RuntimeError, match="not bound"):
+            ev.save_objdetect(MagicMock(), {})
+
+
+# ===================================================================
 # TestZMClient - tag_event (via Event.tag)
 # ===================================================================
 

@@ -165,6 +165,14 @@ class Event:
         self._require_client()
         self._client._tag_event(self.id, labels)
 
+    def save_objdetect(self, image, metadata: dict, path_override: str | None = None) -> str | None:
+        """Write ``objdetect.jpg`` and ``objects.json`` to the event directory.
+
+        Returns the directory path used, or ``None`` if no path was available.
+        """
+        self._require_client()
+        return self._client._save_objdetect(self, image, metadata, path_override)
+
     def delete(self) -> None:
         """Delete this event."""
         self._require_client()
