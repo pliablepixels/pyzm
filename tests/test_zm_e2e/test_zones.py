@@ -43,4 +43,4 @@ class TestZones:
         for p in points:
             assert isinstance(p, tuple)
             assert len(p) == 2
-            assert isinstance(p[0], int) and isinstance(p[1], int)
+            assert isinstance(p[0], (int, float)) and isinstance(p[1], (int, float))

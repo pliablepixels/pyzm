@@ -78,7 +78,7 @@ class PTZCapabilities:
 class Zone:
     """A detection zone polygon belonging to a monitor."""
     name: str
-    points: list[tuple[int, int]]
+    points: list[tuple[float, float]]
     pattern: str | None = None
     ignore_pattern: str | None = None
 

@@ -619,15 +619,19 @@ class ZMClient:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _parse_zone_coords(coords_str: str) -> list[tuple[int, int]]:
-    """Parse ZM zone coordinate string like ``"0,0 639,0 639,479 0,479"``."""
+def _parse_zone_coords(coords_str: str) -> list[tuple[float, float]]:
+    """Parse ZM zone coordinate string like ``"0,0 639,0 639,479 0,479"``.
+
+    Coordinates may be integers (pixels) or floats (percentages, ZM 1.37+).
+    Ref: pliablepixels/zmeventnotification#18
+    """
     if not coords_str:
         return []
-    points: list[tuple[int, int]] = []
+    points: list[tuple[float, float]] = []
     for pair in coords_str.strip().split():
         parts = pair.split(",")
         if len(parts) == 2:
-            points.append((int(parts[0]), int(parts[1])))
+            points.append((float(parts[0]), float(parts[1])))
     return points
 
 

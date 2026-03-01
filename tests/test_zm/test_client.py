@@ -333,6 +333,27 @@ class TestMonitorOOP:
         mock_api.get.assert_called_with("zones/forMonitor/1.json")
 
     @patch("pyzm.client.ZMAPI")
+    def test_monitor_get_zones_float_coords(self, mock_zmapi_cls):
+        """Percentage-based coords (floats) must parse without error. Ref: pliablepixels/zmeventnotification#18"""
+        mock_api = _make_mock_api()
+        mock_api.get.side_effect = [
+            {"monitors": [_sample_monitor_api_data(1, "Front Door")]},
+            {"zones": [
+                {"Zone": {"Name": "driveway", "Coords": "26.41,33.5 75.2,33.5 75.2,90.1 26.41,90.1"}},
+            ]},
+        ]
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(api_url="https://zm.example.com/zm/api")
+
+        m = client.monitor(1)
+        zones = m.get_zones()
+        assert len(zones) == 1
+        assert zones[0].name == "driveway"
+        assert zones[0].points == [(26.41, 33.5), (75.2, 33.5), (75.2, 90.1), (26.41, 90.1)]
+
+    @patch("pyzm.client.ZMAPI")
     def test_monitor_arm(self, mock_zmapi_cls):
         mock_api = _make_mock_api()
         mock_api.get.return_value = {"monitors": [_sample_monitor_api_data(5)]}
