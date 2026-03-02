@@ -248,11 +248,24 @@ class ZMClient:
     def _monitor_zones(self, monitor_id: int) -> list[Zone]:
         """Return detection zones for a monitor."""
         data = self._api.get(f"zones/forMonitor/{monitor_id}.json")
+        raw_zones = data.get("zones", []) if data else []
+        # Only fetch monitor dimensions when at least one zone uses percentages
+        has_pct = any(
+            z.get("Zone", z).get("Units") == "Percent" for z in raw_zones
+        )
+        mon_w = mon_h = 0
+        if has_pct:
+            mon_data = self._api.get(f"monitors/{monitor_id}.json")
+            mon = mon_data.get("monitor", {}).get("Monitor", {}) if mon_data else {}
+            mon_w = int(mon.get("Width", 0))
+            mon_h = int(mon.get("Height", 0))
         zones: list[Zone] = []
-        for z in data.get("zones", []) if data else []:
+        for z in raw_zones:
             zd = z.get("Zone", z)
             coords_str = zd.get("Coords", "")
             points = _parse_zone_coords(coords_str)
+            if zd.get("Units") == "Percent" and mon_w and mon_h:
+                points = [(int(round(x * mon_w / 100.0)), int(round(y * mon_h / 100.0))) for x, y in points]
             zones.append(Zone(
                 name=zd.get("Name", ""),
                 points=points,
