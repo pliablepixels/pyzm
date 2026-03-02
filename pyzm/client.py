@@ -248,13 +248,19 @@ class ZMClient:
     def _monitor_zones(self, monitor_id: int) -> list[Zone]:
         """Return detection zones for a monitor."""
         data = self._api.get(f"zones/forMonitor/{monitor_id}.json")
-        # Fetch monitor dimensions for percent->pixel conversion
-        mon_data = self._api.get(f"monitors/{monitor_id}.json")
-        mon = mon_data.get("monitor", {}).get("Monitor", {}) if mon_data else {}
-        mon_w = int(mon.get("Width", 0))
-        mon_h = int(mon.get("Height", 0))
+        raw_zones = data.get("zones", []) if data else []
+        # Only fetch monitor dimensions when at least one zone uses percentages
+        has_pct = any(
+            z.get("Zone", z).get("Units") == "Percent" for z in raw_zones
+        )
+        mon_w = mon_h = 0
+        if has_pct:
+            mon_data = self._api.get(f"monitors/{monitor_id}.json")
+            mon = mon_data.get("monitor", {}).get("Monitor", {}) if mon_data else {}
+            mon_w = int(mon.get("Width", 0))
+            mon_h = int(mon.get("Height", 0))
         zones: list[Zone] = []
-        for z in data.get("zones", []) if data else []:
+        for z in raw_zones:
             zd = z.get("Zone", z)
             coords_str = zd.get("Coords", "")
             points = _parse_zone_coords(coords_str)
@@ -266,7 +272,7 @@ class ZMClient:
                 _raw=z,
             ))
         return zones
-    
+
     def _arm(self, monitor_id: int) -> dict:
         """Trigger alarm ON for a monitor."""
         return self._api.get(f"monitors/alarm/id:{monitor_id}/command:on.json")

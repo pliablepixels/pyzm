@@ -354,6 +354,82 @@ class TestMonitorOOP:
         assert zones[0].points == [(26.41, 33.5), (75.2, 33.5), (75.2, 90.1), (26.41, 90.1)]
 
     @patch("pyzm.client.ZMAPI")
+    def test_monitor_get_zones_percent_to_pixels(self, mock_zmapi_cls):
+        """Zones with Units='Percent' must be converted to pixel coords."""
+        mock_api = _make_mock_api()
+        mock_api.get.side_effect = [
+            {"monitors": [_sample_monitor_api_data(1, "Front Door")]},
+            # Zone response with Units=Percent
+            {"zones": [
+                {"Zone": {"Name": "driveway", "Units": "Percent",
+                          "Coords": "25.0,50.0 75.0,50.0 75.0,100.0 25.0,100.0"}},
+            ]},
+            # Monitor dimensions fetch (1920x1080 from _sample_monitor_api_data)
+            {"monitor": {"Monitor": {"Width": "1920", "Height": "1080"}}},
+        ]
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(api_url="https://zm.example.com/zm/api")
+
+        m = client.monitor(1)
+        zones = m.get_zones()
+        assert len(zones) == 1
+        assert zones[0].name == "driveway"
+        # 25% of 1920 = 480, 50% of 1080 = 540, 75% of 1920 = 1440, 100% of 1080 = 1080
+        assert zones[0].points == [(480, 540), (1440, 540), (1440, 1080), (480, 1080)]
+        # Should have fetched monitor dimensions
+        assert mock_api.get.call_args_list[-1][0][0] == "monitors/1.json"
+
+    @patch("pyzm.client.ZMAPI")
+    def test_monitor_get_zones_pixel_no_extra_api_call(self, mock_zmapi_cls):
+        """Pixel-based zones should NOT trigger a monitor dimensions fetch."""
+        mock_api = _make_mock_api()
+        mock_api.get.side_effect = [
+            {"monitors": [_sample_monitor_api_data(1, "Front Door")]},
+            {"zones": [
+                {"Zone": {"Name": "driveway", "Coords": "0,0 100,0 100,100 0,100"}},
+            ]},
+        ]
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(api_url="https://zm.example.com/zm/api")
+
+        m = client.monitor(1)
+        zones = m.get_zones()
+        assert len(zones) == 1
+        assert zones[0].points == [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
+        # Only 2 API calls: monitors list + zones. No monitors/{id}.json call.
+        assert mock_api.get.call_count == 2
+
+    @patch("pyzm.client.ZMAPI")
+    def test_monitor_get_zones_mixed_units(self, mock_zmapi_cls):
+        """Mix of pixel and percent zones: only percent zones get converted."""
+        mock_api = _make_mock_api()
+        mock_api.get.side_effect = [
+            {"monitors": [_sample_monitor_api_data(1, "Front Door")]},
+            {"zones": [
+                {"Zone": {"Name": "pixel_zone", "Coords": "0,0 640,0 640,480 0,480"}},
+                {"Zone": {"Name": "pct_zone", "Units": "Percent",
+                          "Coords": "0.0,0.0 50.0,0.0 50.0,50.0 0.0,50.0"}},
+            ]},
+            {"monitor": {"Monitor": {"Width": "1920", "Height": "1080"}}},
+        ]
+        mock_zmapi_cls.return_value = mock_api
+
+        from pyzm.client import ZMClient
+        client = ZMClient(api_url="https://zm.example.com/zm/api")
+
+        m = client.monitor(1)
+        zones = m.get_zones()
+        assert len(zones) == 2
+        # Pixel zone unchanged
+        assert zones[0].points == [(0.0, 0.0), (640.0, 0.0), (640.0, 480.0), (0.0, 480.0)]
+        # Percent zone converted: 50% of 1920 = 960, 50% of 1080 = 540
+        assert zones[1].points == [(0, 0), (960, 0), (960, 540), (0, 540)]
+
+    @patch("pyzm.client.ZMAPI")
     def test_monitor_arm(self, mock_zmapi_cls):
         mock_api = _make_mock_api()
         mock_api.get.return_value = {"monitors": [_sample_monitor_api_data(5)]}
