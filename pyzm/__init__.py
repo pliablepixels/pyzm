@@ -7,6 +7,7 @@ __version__ = "2.2.0"
 VERSION = __version__
 
 from pyzm.client import ZMClient
+from pyzm.models.zm import Notification
 from pyzm.models.config import (
     DetectorConfig,
     ModelConfig,
@@ -25,6 +26,7 @@ __all__ = [
     "BBox",
     "Detection",
     "DetectionResult",
+    "Notification",
 ]
 
 

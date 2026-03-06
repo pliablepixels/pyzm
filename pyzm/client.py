@@ -25,7 +25,7 @@ from typing import Any
 from urllib.parse import urlparse, urlencode
 
 from pyzm.models.config import StreamConfig, ZMClientConfig
-from pyzm.models.zm import Event, Frame, Monitor, PTZCapabilities, Zone
+from pyzm.models.zm import Event, Frame, Monitor, Notification, PTZCapabilities, Zone
 from pyzm.zm.api import ZMAPI
 from pyzm.zm.media import FrameExtractor
 
@@ -217,6 +217,45 @@ class ZMClient:
         if data and data.get("event"):
             return Event.from_api_dict(data["event"], client=self)
         raise ValueError(f"Event {event_id} not found")
+
+    # ------------------------------------------------------------------
+    # Notifications
+    # ------------------------------------------------------------------
+
+    def notifications(self) -> list[Notification]:
+        """Fetch all push notification token registrations."""
+        data = self._api.get("notifications.json")
+        items = data.get("notifications", []) if data else []
+        return [Notification.from_api_dict(n, client=self) for n in items]
+
+    def notification(self, notification_id: int) -> Notification:
+        """Fetch a single notification registration by ID."""
+        data = self._api.get(f"notifications/{notification_id}.json")
+        if data and data.get("notification"):
+            return Notification.from_api_dict(data["notification"], client=self)
+        raise ValueError(f"Notification {notification_id} not found")
+
+    def _create_notification(self, **kwargs) -> dict:
+        """Create or upsert a notification registration."""
+        data = {f"Notification[{k}]": v for k, v in kwargs.items()}
+        return self._api.post("notifications.json", data=data)
+
+    def _update_notification(self, notification_id: int, **kwargs) -> dict:
+        """Update fields on a notification registration."""
+        data = {f"Notification[{k}]": v for k, v in kwargs.items()}
+        return self._api.put(f"notifications/{notification_id}.json", data=data)
+
+    def _delete_notification(self, notification_id: int) -> None:
+        """Delete a notification registration."""
+        self._api.delete(f"notifications/{notification_id}.json")
+
+    def _update_notification_last_sent(self, notification_id: int, badge: int | None = None) -> None:
+        """Update LastNotifiedAt to now and optionally set BadgeCount."""
+        from datetime import datetime
+        data = {"LastNotifiedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        if badge is not None:
+            data["BadgeCount"] = str(badge)
+        self._update_notification(notification_id, **data)
 
     def delete_events(
         self,

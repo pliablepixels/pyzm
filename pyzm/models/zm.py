@@ -221,6 +221,84 @@ class Event:
 
 
 @dataclass
+class Notification:
+    """A ZoneMinder push notification token registration."""
+    id: int
+    user_id: int = 0
+    token: str = ""
+    platform: str = ""
+    monitor_list: str | None = None
+    interval: int = 0
+    push_state: str = "enabled"
+    app_version: str | None = None
+    badge_count: int = 0
+    last_notified_at: datetime | None = None
+
+    _raw: dict = field(default_factory=dict, repr=False, compare=False)
+    _client: ZMClient | None = field(default=None, repr=False, compare=False)
+
+    def raw(self) -> dict:
+        return self._raw
+
+    def monitors(self) -> list[int] | None:
+        """Parse MonitorList into list of ints. None = all monitors."""
+        if not self.monitor_list:
+            return None
+        return [int(m.strip()) for m in self.monitor_list.split(",") if m.strip()]
+
+    def should_notify(self, monitor_id: int) -> bool:
+        """Check if this token should receive notifications for the given monitor."""
+        if self.push_state != "enabled":
+            return False
+        monitors = self.monitors()
+        if monitors is None:
+            return True
+        return monitor_id in monitors
+
+    def is_throttled(self) -> bool:
+        """Check if this token is currently throttled."""
+        if self.interval <= 0 or self.last_notified_at is None:
+            return False
+        elapsed = (datetime.now() - self.last_notified_at).total_seconds()
+        return elapsed < self.interval
+
+    def delete(self) -> None:
+        self._require_client()
+        self._client._delete_notification(self.id)
+
+    def update_last_sent(self, badge: int | None = None) -> None:
+        """Update LastNotifiedAt to now and optionally set BadgeCount."""
+        self._require_client()
+        self._client._update_notification_last_sent(self.id, badge)
+
+    def _require_client(self) -> None:
+        if self._client is None:
+            raise RuntimeError(
+                "Notification not bound to a ZMClient. "
+                "Use zm.notifications() to get bound Notification objects."
+            )
+
+    @classmethod
+    def from_api_dict(cls, data: dict, client: ZMClient | None = None) -> Notification:
+        """Build from a ZM API Notification JSON dict."""
+        n = data.get("Notification", data)
+        return cls(
+            id=int(n.get("Id", 0)),
+            user_id=int(n.get("UserId", 0)),
+            token=n.get("Token", ""),
+            platform=n.get("Platform", ""),
+            monitor_list=n.get("MonitorList"),
+            interval=int(n.get("Interval", 0)),
+            push_state=n.get("PushState", "enabled"),
+            app_version=n.get("AppVersion"),
+            badge_count=int(n.get("BadgeCount", 0)),
+            last_notified_at=_parse_dt(n.get("LastNotifiedAt")),
+            _raw=data,
+            _client=client,
+        )
+
+
+@dataclass
 class MonitorStatus:
     """Runtime status of a monitor."""
     state: str = ""          # "Idle", "Alarm", etc.
