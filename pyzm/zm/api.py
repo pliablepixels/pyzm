@@ -225,11 +225,12 @@ class ZMAPI:
 
         # Non-JSON, non-image GET -- likely a stale-auth redirect or bad image.
         content_length = resp.headers.get("content-length", "")
-        if content_length == "0":
-            logger.debug("Zero-byte response body; raising BAD_IMAGE")
+        if content_length == "0" or resp.status_code == 404 or not resp.text.strip():
+            logger.debug("Zero-byte or 404 or empty response; raising BAD_IMAGE")
             raise ValueError("BAD_IMAGE")
 
-        logger.debug("Unexpected content-type %r; raising RELOGIN", content_type)
+        logger.debug("Unexpected content-type %r status=%d body=%r; raising RELOGIN",
+                     content_type, resp.status_code, resp.text[:500])
         raise ValueError("RELOGIN")
 
     def _handle_http_error(
