@@ -66,7 +66,6 @@ def filter_by_zone(
     for det in detections:
         bbox_poly = Polygon(det.bbox.as_polygon_coords())
         matched = False
-        ignored = False
 
         for zone in zones:
             # Normalise: accept Zone objects or dicts with 'value'/'points' key
@@ -89,8 +88,7 @@ def filter_by_zone(
                     "filter_by_zone: %s intersects zone %s and matches ignore_pattern %s, suppressing",
                     det.label, zone_name, zone_ignore,
                 )
-                ignored = True
-                break
+                continue  # try other zones
 
             # Zone intersects -- now check the pattern
             pattern = zone_pattern or ".*"
@@ -108,7 +106,7 @@ def filter_by_zone(
                     det.label, zone_name, pattern,
                 )
 
-        if ignored or not matched:
+        if not matched:
             error_boxes.append(det.bbox)
 
     return kept, error_boxes
