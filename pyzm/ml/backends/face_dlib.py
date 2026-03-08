@@ -12,7 +12,6 @@ from __future__ import annotations
 import logging
 import os
 import pickle
-import time
 import time as _time
 import uuid
 from typing import TYPE_CHECKING
@@ -97,7 +96,6 @@ class FaceDlibBackend(MLBackend, PortalockerMixin):
     def detect(self, image: "np.ndarray") -> list[Detection]:
         import cv2
         import face_recognition
-        import imutils
 
         if self._knn is None and not self.is_loaded:
             self.load()
@@ -108,22 +106,6 @@ class FaceDlibBackend(MLBackend, PortalockerMixin):
             Width,
             Height,
         )
-
-        # Downscale large images for performance
-        downscaled = False
-        upsize_xfactor = None
-        upsize_yfactor = None
-        max_size = Width  # default: no downscale
-        old_image = None
-
-        if Width > max_size:
-            downscaled = True
-            logger.debug("Scaling image down to max size: %d", max_size)
-            old_image = image.copy()
-            image = imutils.resize(image, width=max_size)
-            newHeight, newWidth = image.shape[:2]
-            upsize_xfactor = Width / newWidth
-            upsize_yfactor = Height / newHeight
 
         rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
@@ -182,20 +164,6 @@ class FaceDlibBackend(MLBackend, PortalockerMixin):
             f"{(_time.perf_counter() - _t0) * 1000:.2f} ms",
         )
 
-        # Upscale face locations if image was downscaled
-        if downscaled:
-            logger.debug("Scaling image back up to %d", Width)
-            image = old_image
-            new_face_locations = []
-            for loc in face_locations:
-                a, b, c, d = loc
-                a = round(a * upsize_yfactor)
-                b = round(b * upsize_xfactor)
-                c = round(c * upsize_yfactor)
-                d = round(d * upsize_xfactor)
-                new_face_locations.append((a, b, c, d))
-            face_locations = new_face_locations
-
         # Build detections
         unknown_face_name = self._config.options.get("unknown_face_name", "unknown")
         detections: list[Detection] = []
@@ -242,7 +210,7 @@ class FaceDlibBackend(MLBackend, PortalockerMixin):
         y2 = min(loc[2] + leeway, h)
         crop_img = image[y1:y2, x1:x2]
 
-        timestr = time.strftime("%b%d-%Hh%Mm%Ss-")
+        timestr = _time.strftime("%b%d-%Hh%Mm%Ss-")
         unknown_dir = self._config.unknown_faces_dir or "/tmp"
         unf = os.path.join(unknown_dir, timestr + str(uuid.uuid4()) + ".jpg")
         logger.info(
