@@ -2,38 +2,18 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
 import requests as http_requests
-from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, Depends, FastAPI, File, HTTPException, UploadFile
 
 from pyzm.ml.detector import Detector
-from pyzm.models.config import FrameStrategy, ServerConfig
-from pyzm.models.detection import DetectionResult
-from pyzm.models.zm import Zone
+from pyzm.models.config import ServerConfig
 from pyzm.serve.auth import create_login_route, create_token_dependency
 
 logger = logging.getLogger("pyzm.serve")
-
-
-def _parse_zones(raw_zones: list[dict] | str | None) -> list[Zone] | None:
-    """Parse raw zone data into Zone objects."""
-    if not raw_zones:
-        return None
-    if isinstance(raw_zones, str):
-        raw_zones = json.loads(raw_zones)
-    return [
-        Zone(
-            name=z.get("name", ""),
-            points=z.get("value", z.get("points", [])),
-            pattern=z.get("pattern"),
-            ignore_pattern=z.get("ignore_pattern"),
-        )
-        for z in raw_zones
-    ]
 
 
 def create_app(config: ServerConfig | None = None) -> FastAPI:
@@ -102,10 +82,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         return {"models": result}
 
     @app.post("/detect", dependencies=auth_deps)
-    async def detect(
-        file: UploadFile = File(...),
-        zones: str | None = Form(None),
-    ):
+    async def detect(file: UploadFile = File(...)):
         import cv2
         import numpy as np
 
@@ -118,34 +95,18 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         if image is None:
             raise HTTPException(status_code=400, detail="Could not decode image")
 
-        zone_list = None
-        if zones:
-            try:
-                zone_list = _parse_zones(zones)
-            except (json.JSONDecodeError, TypeError) as exc:
-                raise HTTPException(
-                    status_code=400, detail=f"Invalid zones JSON: {exc}"
-                )
-
         detector: Detector = app.state.detector
-        result = detector.detect(image, zones=zone_list)
+        result = detector.detect(image)
 
         data = result.to_dict()
-        # Strip non-serializable fields
         data.pop("image", None)
         return data
 
     @app.post("/detect_urls", dependencies=auth_deps)
     async def detect_urls(payload: dict = Body(...)):
-        """Detect objects in images fetched from URLs.
-
-        The client sends a list of image URLs (typically ZM frame URLs)
-        and the server fetches each one, decodes JPEG, and runs detection.
-        """
+        """Fetch images from URLs, run inference, return per-frame raw results."""
         import cv2
         import numpy as np
-
-        from pyzm.ml.detector import _is_better
 
         urls = payload.get("urls", [])
         zm_auth = payload.get("zm_auth", "")
@@ -154,20 +115,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         if not urls:
             raise HTTPException(status_code=400, detail="No URLs provided")
 
-        try:
-            zone_list = _parse_zones(payload.get("zones"))
-        except (TypeError, KeyError) as exc:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid zones: {exc}"
-            )
-
-        orig_shape = None
-        raw_shape = payload.get("original_shape")
-        if raw_shape:
-            orig_shape = tuple(raw_shape)
-
         detector: Detector = app.state.detector
-        strategy = detector._config.frame_strategy
         results = []
 
         for entry in urls:
@@ -176,7 +124,6 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
             if not url:
                 continue
 
-            # Append ZM auth
             if zm_auth:
                 sep = "&" if "?" in url else "?"
                 url = f"{url}{sep}{zm_auth}"
@@ -193,24 +140,12 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
                 logger.exception("Failed to fetch frame %s", fid)
                 continue
 
-            result = detector.detect(image, zones=zone_list, original_shape=orig_shape)
-            result.frame_id = fid
-            results.append(result)
+            result = detector.detect(image)
+            data = result.to_dict()
+            data.pop("image", None)
+            data["frame_id"] = fid
+            results.append(data)
 
-            # Short-circuit for 'first' / 'first_new' strategy
-            if strategy in (FrameStrategy.FIRST, FrameStrategy.FIRST_NEW) and result.matched:
-                break
-
-        if not results:
-            return DetectionResult().to_dict()
-
-        best = results[0]
-        for r in results[1:]:
-            if _is_better(r, best, strategy):
-                best = r
-
-        data = best.to_dict()
-        data.pop("image", None)
-        return data
+        return {"results": results}
 
     return app

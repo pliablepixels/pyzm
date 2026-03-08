@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from pyzm.models.config import FrameStrategy, ServerConfig
+from pyzm.models.config import ServerConfig
 from pyzm.models.detection import BBox, Detection, DetectionResult
 
 
@@ -89,18 +89,6 @@ class TestDetect:
         assert "boxes" in data
         assert data["labels"] == ["person"]
 
-    @pytest.mark.integration
-    def test_detect_with_zones(self, client):
-        import json
-        jpeg = self._make_jpeg()
-        zones_json = json.dumps([{"name": "zone1", "value": [[0, 0], [100, 0], [100, 100], [0, 100]]}])
-        resp = client.post(
-            "/detect",
-            files={"file": ("test.jpg", jpeg, "image/jpeg")},
-            data={"zones": zones_json},
-        )
-        assert resp.status_code == 200
-
     def test_detect_empty_file(self, client):
         resp = client.post("/detect", files={"file": ("test.jpg", b"", "image/jpeg")})
         assert resp.status_code == 400
@@ -108,16 +96,6 @@ class TestDetect:
     @pytest.mark.integration
     def test_detect_bad_image(self, client):
         resp = client.post("/detect", files={"file": ("test.jpg", b"not-a-jpeg", "image/jpeg")})
-        assert resp.status_code == 400
-
-    @pytest.mark.integration
-    def test_detect_bad_zones_json(self, client):
-        jpeg = self._make_jpeg()
-        resp = client.post(
-            "/detect",
-            files={"file": ("test.jpg", jpeg, "image/jpeg")},
-            data={"zones": "not-json"},
-        )
         assert resp.status_code == 400
 
     @pytest.mark.integration
@@ -151,7 +129,7 @@ class TestDetectUrls:
     @pytest.mark.integration
     @patch("pyzm.serve.app.http_requests")
     def test_detect_urls_fetches_and_detects(self, mock_http, client):
-        """Server fetches image from URL and runs detection."""
+        """Server fetches image from URL and returns per-frame raw results."""
         jpeg_bytes = self._make_jpeg_bytes()
         mock_resp = MagicMock()
         mock_resp.content = jpeg_bytes
@@ -168,8 +146,10 @@ class TestDetectUrls:
         resp = client.post("/detect_urls", json=payload)
         assert resp.status_code == 200
         data = resp.json()
-        assert data["labels"] == ["person"]
-        assert data["frame_id"] == "snapshot"
+        assert "results" in data
+        assert len(data["results"]) == 1
+        assert data["results"][0]["labels"] == ["person"]
+        assert data["results"][0]["frame_id"] == "snapshot"
 
         # Verify auth was appended to URL
         fetched_url = mock_http.get.call_args[0][0]
@@ -238,7 +218,7 @@ class TestDetectUrls:
     @pytest.mark.integration
     @patch("pyzm.serve.app.http_requests")
     def test_detect_urls_all_fetch_failures(self, mock_http, client):
-        """When all URL fetches fail, returns empty result."""
+        """When all URL fetches fail, returns empty results list."""
         mock_http.get.side_effect = ConnectionError("unreachable")
 
         payload = {
@@ -247,70 +227,12 @@ class TestDetectUrls:
         resp = client.post("/detect_urls", json=payload)
         assert resp.status_code == 200
         data = resp.json()
-        assert data["labels"] == []
-
-    @pytest.mark.integration
-    @patch("pyzm.serve.app.http_requests")
-    def test_detect_urls_with_zones(self, mock_http, client):
-        """Zones are passed through to detector.detect()."""
-        jpeg_bytes = self._make_jpeg_bytes()
-        mock_resp = MagicMock()
-        mock_resp.content = jpeg_bytes
-        mock_resp.raise_for_status = MagicMock()
-        mock_http.get.return_value = mock_resp
-
-        payload = {
-            "urls": [{"frame_id": "1", "url": "http://zm/image?eid=1"}],
-            "zones": [{"name": "driveway", "value": [[0, 0], [100, 0], [100, 100], [0, 100]]}],
-        }
-        resp = client.post("/detect_urls", json=payload)
-        assert resp.status_code == 200
-
-        # Verify zones were passed to detect()
-        det = client.app.state.detector
-        call_kwargs = det.detect.call_args[1]
-        assert call_kwargs["zones"] is not None
-        assert call_kwargs["zones"][0].name == "driveway"
-
-    @pytest.mark.integration
-    @patch("pyzm.serve.app.http_requests")
-    def test_detect_urls_picks_best_frame(self, mock_http, client):
-        """Multiple frames: best result is returned using frame_strategy."""
-        jpeg_bytes = self._make_jpeg_bytes()
-        mock_resp = MagicMock()
-        mock_resp.content = jpeg_bytes
-        mock_resp.raise_for_status = MagicMock()
-        mock_http.get.return_value = mock_resp
-
-        det = client.app.state.detector
-        det._config.frame_strategy = FrameStrategy.MOST
-
-        # Frame 1: 1 detection, Frame 2: 2 detections
-        result1 = DetectionResult(detections=[
-            Detection(label="person", confidence=0.9, bbox=BBox(0, 0, 10, 10), model_name="yolov4"),
-        ])
-        result2 = DetectionResult(detections=[
-            Detection(label="person", confidence=0.9, bbox=BBox(0, 0, 10, 10), model_name="yolov4"),
-            Detection(label="car", confidence=0.8, bbox=BBox(20, 20, 60, 60), model_name="yolov4"),
-        ])
-        det.detect.side_effect = [result1, result2]
-
-        payload = {
-            "urls": [
-                {"frame_id": "1", "url": "http://zm/image?eid=1&fid=1"},
-                {"frame_id": "2", "url": "http://zm/image?eid=1&fid=2"},
-            ],
-        }
-        resp = client.post("/detect_urls", json=payload)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert len(data["labels"]) == 2
-        assert data["frame_id"] == "2"
+        assert data["results"] == []
 
     @pytest.mark.integration
     @patch("pyzm.serve.app.http_requests")
     def test_detect_urls_image_stripped(self, mock_http, client):
-        """image key is stripped from response."""
+        """image key is stripped from each per-frame response."""
         jpeg_bytes = self._make_jpeg_bytes()
         mock_resp = MagicMock()
         mock_resp.content = jpeg_bytes
@@ -320,4 +242,29 @@ class TestDetectUrls:
         payload = {"urls": [{"frame_id": "1", "url": "http://zm/image"}]}
         resp = client.post("/detect_urls", json=payload)
         assert resp.status_code == 200
-        assert "image" not in resp.json()
+        data = resp.json()
+        assert len(data["results"]) == 1
+        assert "image" not in data["results"][0]
+
+    @pytest.mark.integration
+    @patch("pyzm.serve.app.http_requests")
+    def test_detect_urls_returns_all_frames(self, mock_http, client):
+        """Multiple frames each get their own result entry."""
+        jpeg_bytes = self._make_jpeg_bytes()
+        mock_resp = MagicMock()
+        mock_resp.content = jpeg_bytes
+        mock_resp.raise_for_status = MagicMock()
+        mock_http.get.return_value = mock_resp
+
+        payload = {
+            "urls": [
+                {"frame_id": "snapshot", "url": "http://zm/image?fid=snapshot"},
+                {"frame_id": "alarm", "url": "http://zm/image?fid=alarm"},
+            ],
+        }
+        resp = client.post("/detect_urls", json=payload)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["results"]) == 2
+        assert data["results"][0]["frame_id"] == "snapshot"
+        assert data["results"][1]["frame_id"] == "alarm"
