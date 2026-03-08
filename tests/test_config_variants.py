@@ -442,9 +442,9 @@ class TestPerMonitorPastDetections:
         )
 
         # Patch match_past_detections to return all detections unchanged
-        with patch("pyzm.ml.pipeline.load_past_detections", return_value=([], [])), \
-             patch("pyzm.ml.pipeline.match_past_detections", return_value=[det]), \
-             patch("pyzm.ml.pipeline.save_past_detections") as mock_save:
+        with patch("pyzm.ml.filters.load_past_detections", return_value=([], [])), \
+             patch("pyzm.ml.filters.match_past_detections", return_value=[det]), \
+             patch("pyzm.ml.filters.save_past_detections") as mock_save:
             result = pipeline._filter_past_per_type([det])
 
         expected_path = os.path.join(str(tmp_path), "past_detections_mid3.pkl")
@@ -467,9 +467,9 @@ class TestPerMonitorPastDetections:
             model_name="test",
         )
 
-        with patch("pyzm.ml.pipeline.load_past_detections", return_value=([], [])), \
-             patch("pyzm.ml.pipeline.match_past_detections", return_value=[det]), \
-             patch("pyzm.ml.pipeline.save_past_detections") as mock_save:
+        with patch("pyzm.ml.filters.load_past_detections", return_value=([], [])), \
+             patch("pyzm.ml.filters.match_past_detections", return_value=[det]), \
+             patch("pyzm.ml.filters.save_past_detections") as mock_save:
             result = pipeline._filter_past_per_type([det])
 
         expected_path = os.path.join(str(tmp_path), "past_detections.pkl")
@@ -497,9 +497,9 @@ class TestPerMonitorPastDetections:
                 monitor_id=mid,
             )
             pipeline = ModelPipeline(config)
-            with patch("pyzm.ml.pipeline.load_past_detections", return_value=([], [])), \
-                 patch("pyzm.ml.pipeline.match_past_detections", return_value=[det]), \
-                 patch("pyzm.ml.pipeline.save_past_detections", side_effect=capture_save):
+            with patch("pyzm.ml.filters.load_past_detections", return_value=([], [])), \
+                 patch("pyzm.ml.filters.match_past_detections", return_value=[det]), \
+                 patch("pyzm.ml.filters.save_past_detections", side_effect=capture_save):
                 pipeline._filter_past_per_type([det])
 
         assert paths_used[0] != paths_used[1]

@@ -485,8 +485,8 @@ class TestPerTypeConfig:
 
     @patch("pyzm.ml.pipeline._create_backend")
     @patch("pyzm.ml.pipeline.filter_by_zone")
-    @patch("pyzm.ml.pipeline.load_past_detections")
-    @patch("pyzm.ml.pipeline.save_past_detections")
+    @patch("pyzm.ml.filters.load_past_detections")
+    @patch("pyzm.ml.filters.save_past_detections")
     def test_per_type_match_past_detections(
         self, mock_save, mock_load, mock_zone_filter, mock_create,
     ):

@@ -310,3 +310,74 @@ def match_past_detections(
             kept.append(det)
 
     return kept
+
+
+# ---------------------------------------------------------------------------
+# Composite past-detection filter (per model-type with global fallback)
+# ---------------------------------------------------------------------------
+
+def filter_past_per_type(
+    detections: list[Detection],
+    config: "DetectorConfig",
+) -> list[Detection]:
+    """Apply past-detection dedup per model-type using config settings.
+
+    This is the standalone version of the logic formerly in
+    ``ModelPipeline._filter_past_per_type()``.
+    """
+    from collections import defaultdict
+
+    from pyzm.models.config import ModelType, TypeOverrides
+
+    if not detections:
+        return detections
+
+    # Quick check: is past-detection matching enabled for any type?
+    any_enabled = config.match_past_detections
+    if not any_enabled:
+        for tov in config.type_overrides.values():
+            if tov.match_past_detections is True:
+                any_enabled = True
+                break
+    if not any_enabled:
+        return detections
+
+    if config.monitor_id:
+        past_file = os.path.join(config.image_path, f"past_detections_mid{config.monitor_id}.pkl")
+    else:
+        past_file = os.path.join(config.image_path, "past_detections.pkl")
+    saved_boxes, saved_labels = load_past_detections(past_file)
+
+    by_type: dict[str, list[Detection]] = defaultdict(list)
+    for det in detections:
+        by_type[det.detection_type].append(det)
+
+    kept: list[Detection] = []
+    for dtype, dets in by_type.items():
+        try:
+            mtype = ModelType(dtype)
+        except ValueError:
+            mtype = None
+
+        tov = config.type_overrides.get(mtype, TypeOverrides()) if mtype else TypeOverrides()
+
+        enabled = tov.match_past_detections if tov.match_past_detections is not None else config.match_past_detections
+        if not enabled:
+            kept.extend(dets)
+            continue
+
+        max_diff = tov.past_det_max_diff_area if tov.past_det_max_diff_area is not None else config.past_det_max_diff_area
+        label_overrides = tov.past_det_max_diff_area_labels or config.past_det_max_diff_area_labels
+        ignore = tov.ignore_past_detection_labels if tov.ignore_past_detection_labels is not None else config.ignore_past_detection_labels
+        aliases = tov.aliases if tov.aliases is not None else config.aliases
+
+        kept.extend(match_past_detections(
+            dets, saved_boxes, saved_labels,
+            max_diff_area=max_diff,
+            label_area_overrides=label_overrides,
+            ignore_labels=ignore,
+            aliases=aliases,
+        ))
+
+    save_past_detections(past_file, detections)
+    return kept
