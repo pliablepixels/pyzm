@@ -382,3 +382,60 @@ class TestDetectionResult:
             dr.annotate()
             # 2 detections × 2 rectangles + 1 error box = 5
             assert mock_cv2.rectangle.call_count == 5
+
+
+# ===================================================================
+# TestDetectionTypeWireFormat
+# ===================================================================
+
+class TestDetectionTypeWireFormat:
+    """Tests that detection_type survives the wire format round-trip."""
+
+    def test_to_dict_includes_detection_types(self):
+        """to_dict() emits a detection_types list matching detections order."""
+        dets = [
+            Detection(
+                label="person", confidence=0.95,
+                bbox=BBox(10, 20, 50, 80),
+                model_name="yolov4", detection_type="object",
+            ),
+            Detection(
+                label="john", confidence=0.88,
+                bbox=BBox(60, 30, 90, 70),
+                model_name="dlib", detection_type="face",
+            ),
+            Detection(
+                label="ABC123", confidence=0.76,
+                bbox=BBox(100, 40, 200, 60),
+                model_name="openalpr", detection_type="alpr",
+            ),
+        ]
+        dr = DetectionResult(detections=dets, frame_id=1)
+        wire = dr.to_dict()
+        assert "detection_types" in wire
+        assert wire["detection_types"] == ["object", "face", "alpr"]
+
+    def test_from_dict_restores_detection_types(self):
+        """from_dict() restores detection_type on each Detection."""
+        wire = {
+            "labels": ["person", "john"],
+            "boxes": [[10, 20, 50, 80], [60, 30, 90, 70]],
+            "confidences": [0.95, 0.88],
+            "model_names": ["yolov4", "dlib"],
+            "detection_types": ["object", "face"],
+        }
+        dr = DetectionResult.from_dict(wire)
+        assert dr.detections[0].detection_type == "object"
+        assert dr.detections[1].detection_type == "face"
+
+    def test_from_dict_defaults_detection_type_when_missing(self):
+        """from_dict() defaults detection_type to 'object' when key is absent."""
+        wire = {
+            "labels": ["person", "car"],
+            "boxes": [[10, 20, 50, 80], [60, 30, 90, 70]],
+            "confidences": [0.95, 0.85],
+            "model_names": ["yolov4", "yolov4"],
+        }
+        dr = DetectionResult.from_dict(wire)
+        assert dr.detections[0].detection_type == "object"
+        assert dr.detections[1].detection_type == "object"

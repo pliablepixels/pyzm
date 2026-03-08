@@ -201,13 +201,15 @@ class DetectionResult:
         boxes = data.get("boxes", [])
         confidences = data.get("confidences", [])
         model_names = data.get("model_names", [])
+        detection_types = data.get("detection_types", [])
 
         detections: list[Detection] = []
         for i, label in enumerate(labels):
             bbox = BBox(*boxes[i]) if i < len(boxes) else BBox(0, 0, 0, 0)
             conf = confidences[i] if i < len(confidences) else 0.0
             mname = model_names[i] if i < len(model_names) else ""
-            detections.append(Detection(label=label, confidence=conf, bbox=bbox, model_name=mname))
+            dtype = detection_types[i] if i < len(detection_types) else "object"
+            detections.append(Detection(label=label, confidence=conf, bbox=bbox, model_name=mname, detection_type=dtype))
 
         error_boxes = [BBox(*eb) for eb in data.get("error_boxes", [])]
 
@@ -232,5 +234,6 @@ class DetectionResult:
             "image": self.image,
             "error_boxes": [eb.as_list() for eb in self.error_boxes],
             "model_names": [d.model_name for d in self.detections],
+            "detection_types": [d.detection_type for d in self.detections],
             "polygons": [],
         }
