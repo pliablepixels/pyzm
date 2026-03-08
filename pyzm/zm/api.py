@@ -138,8 +138,7 @@ class ZMAPI:
         """
         self._auth.refresh_if_needed()
 
-        if params is None:
-            params = {}
+        params = dict(params) if params else {}
         url, params = self._auth.apply_auth(url, params)
 
         method = method.lower()

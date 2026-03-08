@@ -286,7 +286,10 @@ class ModelPipeline:
         if not any_enabled or not all_detections:
             return all_detections
 
-        past_file = os.path.join(cfg.image_path, "past_detections.pkl")
+        if cfg.monitor_id:
+            past_file = os.path.join(cfg.image_path, f"past_detections_mid{cfg.monitor_id}.pkl")
+        else:
+            past_file = os.path.join(cfg.image_path, "past_detections.pkl")
         saved_boxes, saved_labels = load_past_detections(past_file)
 
         # Group detections by detection_type

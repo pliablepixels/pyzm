@@ -111,6 +111,7 @@ _TRIGGER_FIELDS = [
 ]
 _TRIGGER_SIZE = struct.calcsize(_TRIGGER_FMT)
 _TRIGGER_STRING_FIELDS = ["trigger_cause", "trigger_text", "trigger_showtext"]
+_TriggerData = namedtuple("TriggerData", _TRIGGER_FIELDS)
 
 
 # ---------------------------------------------------------------------------
@@ -311,12 +312,14 @@ class SharedMemory:
 
         self._mhandle.seek(0)
         struct_size = struct.calcsize(struct_fmt)
-        SharedData = namedtuple("SharedData", fields)  # type: ignore[misc]
+        if not hasattr(self, '_SharedData') or self._SharedData._fields != tuple(fields):
+            self._SharedData = namedtuple("SharedData", fields)
+        SharedData = self._SharedData
         raw_sd = SharedData._make(
             struct.unpack(struct_fmt, self._mhandle.read(struct_size)),
         )
 
-        TriggerData = namedtuple("TriggerData", _TRIGGER_FIELDS)  # type: ignore[misc]
+        TriggerData = _TriggerData
         raw_td = TriggerData._make(
             struct.unpack(_TRIGGER_FMT, self._mhandle.read(_TRIGGER_SIZE)),
         )

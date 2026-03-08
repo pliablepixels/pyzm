@@ -185,7 +185,7 @@ class TestDetectorConfig:
         assert dc.pattern == ".*"
         assert dc.match_past_detections is False
         assert dc.past_det_max_diff_area == "5%"
-        assert dc.image_path == "/tmp"
+        assert dc.image_path == "/var/lib/zmeventnotification/images"
 
     def test_creation_with_models(self):
         mc = ModelConfig(name="yolov4", type=ModelType.OBJECT)
@@ -596,18 +596,14 @@ class TestStreamConfig:
         assert sc.resize == 800
         assert sc.start_frame == 1
         assert sc.frame_skip == 1
-        assert sc.download is False
-        assert sc.download_dir == "/tmp"
         assert sc.delay == 0
         assert sc.delay_between_frames == 0
         assert sc.delay_between_snapshots == 0
         assert sc.contig_frames_before_error == 5
         assert sc.max_attempts == 1
         assert sc.sleep_between_attempts == 3
-        assert sc.disable_ssl_cert_check is True
         assert sc.save_frames is False
         assert sc.save_frames_dir == "/tmp"
-        assert sc.delete_after_analyze is False
         assert sc.convert_snapshot_to_fid is True
 
     def test_all_fields_override(self):
@@ -617,18 +613,14 @@ class TestStreamConfig:
             resize=640,
             start_frame=2,
             frame_skip=2,
-            download=True,
-            download_dir="/data/downloads",
             delay=5,
             delay_between_frames=1,
             delay_between_snapshots=2,
             contig_frames_before_error=10,
             max_attempts=3,
             sleep_between_attempts=5,
-            disable_ssl_cert_check=False,
             save_frames=True,
             save_frames_dir="/data/frames",
-            delete_after_analyze=True,
             convert_snapshot_to_fid=True,
         )
         assert sc.frame_set == ["1", "5", "10"]
@@ -636,18 +628,14 @@ class TestStreamConfig:
         assert sc.resize == 640
         assert sc.start_frame == 2
         assert sc.frame_skip == 2
-        assert sc.download is True
-        assert sc.download_dir == "/data/downloads"
         assert sc.delay == 5
         assert sc.delay_between_frames == 1
         assert sc.delay_between_snapshots == 2
         assert sc.contig_frames_before_error == 10
         assert sc.max_attempts == 3
         assert sc.sleep_between_attempts == 5
-        assert sc.disable_ssl_cert_check is False
         assert sc.save_frames is True
         assert sc.save_frames_dir == "/data/frames"
-        assert sc.delete_after_analyze is True
         assert sc.convert_snapshot_to_fid is True
 
     def test_resize_none_disables_resizing(self):
@@ -695,14 +683,10 @@ class TestStreamConfigFromDict:
 
     def test_boolean_yes_no_conversion(self):
         sc = StreamConfig.from_dict({
-            "download": "yes",
             "save_frames": "no",
-            "delete_after_analyze": "yes",
             "convert_snapshot_to_fid": "no",
         })
-        assert sc.download is True
         assert sc.save_frames is False
-        assert sc.delete_after_analyze is True
         assert sc.convert_snapshot_to_fid is False
 
     def test_ignores_unknown_keys(self):

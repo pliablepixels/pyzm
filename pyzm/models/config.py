@@ -204,7 +204,8 @@ class DetectorConfig(BaseModel):
     past_det_max_diff_area_labels: dict[str, str] = Field(default_factory=dict)
     ignore_past_detection_labels: list[str] = Field(default_factory=list)
     aliases: list[list[str]] = Field(default_factory=list)
-    image_path: str = "/tmp"
+    image_path: str = "/var/lib/zmeventnotification/images"
+    monitor_id: str | None = None
 
     # Per-type overrides (populated by from_dict when section_general has overridable keys)
     type_overrides: dict[ModelType, TypeOverrides] = Field(default_factory=dict)
@@ -277,7 +278,8 @@ class DetectorConfig(BaseModel):
             past_det_max_diff_area_labels=label_area_overrides,
             ignore_past_detection_labels=general.get("ignore_past_detection_labels", []),
             aliases=general.get("aliases", []),
-            image_path=general.get("image_path", "/tmp"),
+            image_path=general.get("image_path", "/var/lib/zmeventnotification/images"),
+            monitor_id=general.get("monitor_id"),
             type_overrides=type_overrides,
         )
 

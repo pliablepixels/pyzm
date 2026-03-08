@@ -293,3 +293,25 @@ class TestLockConfig:
         cfg = DetectorConfig.from_dict(ml)
         assert cfg.models[0].max_lock_wait == 120
         assert cfg.models[0].max_processes == 1
+
+
+# ---------------------------------------------------------------------------
+# monitor_id and image_path
+# ---------------------------------------------------------------------------
+
+class TestMonitorIdAndImagePath:
+    def test_monitor_id_parsed(self):
+        ml = {
+            "general": {"model_sequence": "object", "monitor_id": "5"},
+            "object": {"general": {}, "sequence": [{"framework": "opencv", "weights": "x.onnx"}]},
+        }
+        cfg = DetectorConfig.from_dict(ml)
+        assert cfg.monitor_id == "5"
+
+    def test_monitor_id_default_none(self):
+        cfg = DetectorConfig.from_dict(_minimal_ml_options())
+        assert cfg.monitor_id is None
+
+    def test_image_path_default(self):
+        cfg = DetectorConfig.from_dict(_minimal_ml_options())
+        assert cfg.image_path == "/var/lib/zmeventnotification/images"

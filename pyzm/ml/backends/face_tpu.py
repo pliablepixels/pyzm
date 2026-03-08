@@ -1,7 +1,7 @@
 """Coral TPU face detection backend — merged from pyzm.ml.face_tpu.
 
 Detection-only (no recognition): all faces labeled as configured
-``unknown_face_name`` or "face". Fixes deprecated ``Image.ANTIALIAS``
+``unknown_face_name`` or "unknown". Fixes deprecated ``Image.ANTIALIAS``
 → ``Image.LANCZOS``.
 
 Refs #23
@@ -27,7 +27,7 @@ class FaceTpuBackend(MLBackend, PortalockerMixin):
     """Coral TPU face detection-only backend.
 
     Uses pycoral adapters for TPU inference. Detection only — all faces
-    are labeled as ``unknown_face_name`` (default "face").
+    are labeled as ``unknown_face_name`` (default "unknown").
     """
 
     def __init__(self, config: ModelConfig) -> None:
@@ -109,7 +109,7 @@ class FaceTpuBackend(MLBackend, PortalockerMixin):
             diff_time,
         )
 
-        unknown_face_name = self._config.options.get("unknown_face_name", "face")
+        unknown_face_name = self._config.options.get("unknown_face_name", "unknown")
         detections: list[Detection] = []
 
         for obj in objs:
