@@ -504,18 +504,3 @@ The fine-tuned model can be used alongside your existing models. pyzm's
 detection pipeline will run all configured models and merge results according
 to your ``match_strategy``.
 
-Tips
-----
-
-- **Start small** -- 10-20 images per class is enough for a first pass. You
-  can always add more and retrain.
-- **Import with auto-detect** -- enable "Auto-detect objects at import" and
-  point at images where your model is wrong. Fix the mistakes, then retrain.
-  This is the fastest way to improve accuracy for your specific cameras and
-  lighting conditions.
-- **Check the confusion matrix** -- it shows which classes the model confuses
-  with each other, helping you decide where to add more data.
-- **Watch for overfitting** -- if the best model epoch is early in training
-  (e.g. epoch 15 of 50), try fewer epochs or more training data.
-- **Export and test** -- use the built-in test image feature to verify the
-  fine-tuned model before deploying it.
